@@ -14,6 +14,7 @@ git clone <this repo> ~/src/ubuntu-hyprland-ii && cd ~/src/ubuntu-hyprland-ii
 ./setup.sh 00            # read-only preflight
 ./setup.sh 10            # optional: remove all snaps + pin snapd (asks first, backs up ~/snap)
 ./setup.sh               # 00 15 20 30 40 50 60: backup, deps, build (~30-60 min), runtime, dots, login entry
+./setup.sh 45            # optional: EasyEffects (apt) + songrec (author's PPA, key fingerprint checked)
 ./setup.sh 70            # optional: VS Code from Microsoft's apt repo
 ```
 
@@ -53,7 +54,8 @@ Not touched: Plasma configs (`kdeglobals`, `dolphinrc`, `konsolerc`, `kitty`, `f
 ## Known issues
 
 - **Switching to a text console (Ctrl+Alt+F*n*) inside Hyprland** crashed it (segfault at address 0 in aquamarine when the seat is disabled). `patches/aquamarine-drm-teardown-fixes.patch` targets this but is not confirmed yet; until it is, log out instead. If it still crashes: `journalctl -k -b | grep segfault`, then `llvm-addr2line-20 -f -C -i -e ~/.local/opt/hyprland/lib/libaquamarine.so.0.15.1 0x<offset>` with the offset from the `[...]` part.
-- Not set up: `ydotool` and `ddcutil` (need the `input`/`i2c` groups), `swappy`, `songrec`, EasyEffects.
+- Not set up: `ydotool` (noble's 0.1.8 predates the 1.x CLI the dots use, and needs `/dev/uinput` access) and `ddcutil` (external-monitor brightness; needs the `i2c` group); both are deliberate group/permission decisions. `swappy` (screenshot annotation) isn't in noble and its build dependency `libgtk-3-dev` currently pulls a mesa upgrade; satty's release binary needs glibc 2.43.
+- `maintenance/repair-etckeeper.sh`: one-off repair for a corrupt `/etc/.git` (backs it up to `/root` first).
 - The session wrapper's NVIDIA variables assume a dGPU-only (MUX) laptop or a desktop; review them on hybrid graphics.
 
 ## Rollback

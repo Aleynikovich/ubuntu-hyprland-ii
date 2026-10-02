@@ -9,12 +9,12 @@ REPO="$(cd "$(dirname "$0")" && pwd)"
 export REPO
 source "$REPO/lib/common.sh"
 
-# 10-remove-snaps and 70-vscode are opt-in: pass them explicitly.
+# 10-remove-snaps, 45-extras and 70-vscode are opt-in: pass them explicitly.
 DEFAULT=(00 15 20 30 40 50 60)
 
 if [ "${1:-}" = --list ] || [ "${1:-}" = -h ]; then
   for f in "$REPO"/phases/*.sh; do printf '%-26s %s\n' "$(basename "$f")" "$(sed -n 2p "$f" | sed 's/^# //')"; done
-  echo; echo "Default: ${DEFAULT[*]}   (opt-in: 10 = remove snaps, 70 = VS Code)"; exit 0
+  echo; echo "Default: ${DEFAULT[*]}   (opt-in: 10 = remove snaps, 45 = EasyEffects + songrec, 70 = VS Code)"; exit 0
 fi
 [ $# -gt 0 ] && SEL=("$@") || SEL=("${DEFAULT[@]}")
 
