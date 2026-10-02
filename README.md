@@ -19,6 +19,7 @@ git clone <this repo> ~/src/ubuntu-hyprland-ii && cd ~/src/ubuntu-hyprland-ii
 ./setup.sh 80            # optional, destructive: remove Plasma/KDE apps/GNOME/X11 sessions, autologin into Hyprland
 ./setup.sh 90 91 92 93   # optional: sleep/hibernate fixes, Limine ESP boot, GRUB removal, panel EDID pin (see "Sleep and hibernate"; laptop-specific)
 ./setup.sh 95            # optional: keep GPU/CPU clocks up on AC so first launches aren't laggy (see "Responsiveness")
+./setup.sh 96            # optional: brightness keys/slider (udev rule + video group; log out and in afterwards)
 ```
 
 Phases 90-95 are specific to a Lenovo Legion 7 16IRX9 (RTX 4070, MUX in dGPU mode): they check DMI against `HW_TESTED` in `config.env` and refuse to run elsewhere unless `HII_FORCE_HW=1`. Phase 00 only reports whether the machine matches.
