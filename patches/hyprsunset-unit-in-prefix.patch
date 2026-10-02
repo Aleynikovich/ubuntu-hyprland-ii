@@ -1,0 +1,10 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 1c189be..bfd8920 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -156,4 +156,4 @@ if (NOT SYSTEMD_USER_UNIT_DIR)
+   set(SYSTEMD_USER_UNIT_DIR "${CMAKE_INSTALL_PREFIX}/lib/systemd/user")
+ endif()
+ 
+-install(FILES ${CMAKE_BINARY_DIR}/systemd/hyprsunset.service DESTINATION "${SYSTEMD_USER_UNIT_DIR}")
++install(FILES ${CMAKE_BINARY_DIR}/systemd/hyprsunset.service DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/systemd/user")

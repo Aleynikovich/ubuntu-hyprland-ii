@@ -1,0 +1,87 @@
+diff --git a/hyprctl/src/main.cpp b/hyprctl/src/main.cpp
+index ae2dfe6..48433ab 100644
+--- a/hyprctl/src/main.cpp
++++ b/hyprctl/src/main.cpp
+@@ -296,7 +296,7 @@ int requestIPC(std::string_view filename, std::string_view arg) {
+     sockaddr_un serverAddress = {0};
+     serverAddress.sun_family  = AF_UNIX;
+ 
+-    std::string socketPath = getRuntimeDir() + "/" + instanceSignature + "/" + filename;
++    std::string socketPath = getRuntimeDir() + "/" + instanceSignature + "/" + std::string(filename);
+ 
+     strncpy(serverAddress.sun_path, socketPath.c_str(), sizeof(serverAddress.sun_path) - 1);
+ 
+diff --git a/src/config/shared/parserUtils/ParserUtils.cpp b/src/config/shared/parserUtils/ParserUtils.cpp
+index dec0bb2..397bd9c 100644
+--- a/src/config/shared/parserUtils/ParserUtils.cpp
++++ b/src/config/shared/parserUtils/ParserUtils.cpp
+@@ -14,7 +14,7 @@ using namespace Config::ParserUtils;
+ using namespace Hyprutils::String;
+ 
+ static std::expected<uint64_t, std::string> parseHex(std::string_view value) {
+-    auto res = value.starts_with("0x") ? strToNumber<uint64_t>(value) : strToNumber<uint64_t>(std::string{"0x"} + value);
++    auto res = value.starts_with("0x") ? strToNumber<uint64_t>(value) : strToNumber<uint64_t>(std::string{"0x"} + std::string(value));
+     if (!res)
+         return std::unexpected(std::format("invalid hex \"{}\"", value));
+     return *res;
+diff --git a/src/helpers/MiscFunctions.cpp b/src/helpers/MiscFunctions.cpp
+index be4f033..bc4ef48 100644
+--- a/src/helpers/MiscFunctions.cpp
++++ b/src/helpers/MiscFunctions.cpp
+@@ -785,7 +785,7 @@ std::string deviceNameToInternalString(const std::string& in) {
+                       }
+                   });
+ 
+-    return result | std::ranges::to<std::string>();
++    return std::ranges::to<std::string>(result);
+ }
+ 
+ static const std::vector<const char*> PKGCONF_PATHS = {"/usr/lib/pkgconfig", "/usr/local/lib/pkgconfig", "/usr/lib64/pkgconfig"};
+@@ -838,7 +838,8 @@ bool truthy(const std::string& str) {
+     });
+ 
+     return [&](auto&&... prefixes) -> bool {
+-        return (... || std::ranges::starts_with(str_view, prefixes));
++        const auto lower = std::ranges::to<std::string>(str_view);
++        return (... || lower.starts_with(prefixes));
+     }("true"sv, "yes"sv, "on"sv);
+     // clang-format on
+ }
+diff --git a/src/output/Monitor.cpp b/src/output/Monitor.cpp
+index e69d8dd..4d65187 100644
+--- a/src/output/Monitor.cpp
++++ b/src/output/Monitor.cpp
+@@ -761,7 +761,7 @@ bool CMonitor::applyMonitorRule(Config::CMonitorRule&& pMonitorRule) {
+         std::ranges::sort(sortedModes, sortFunc);
+         if (sortedModes.size() > 3)
+             sortedModes.erase(sortedModes.begin() + 3, sortedModes.end());
+-        requestedModes.insert_range(requestedModes.end(), sortedModes | std::views::reverse);
++        { auto&& hc_r = sortedModes | std::views::reverse; requestedModes.insert(requestedModes.end(), hc_r.begin(), hc_r.end()); }
+     };
+ 
+     // last fallback is always preferred mode
+diff --git a/src/render/OpenGL.cpp b/src/render/OpenGL.cpp
+index baee1ad..9238db7 100644
+--- a/src/render/OpenGL.cpp
++++ b/src/render/OpenGL.cpp
+@@ -1240,17 +1240,17 @@ WP<CShader> CHyprOpenGLImpl::renderToOutputInternal() {
+         p                      = p.transform(Math::wlTransformToHyprutils(pMonitor->m_transform), pMonitor->m_pixelSize);
+         shader->setUniformFloat2(SHADER_POINTER, p.x / pMonitor->m_pixelSize.x, p.y / pMonitor->m_pixelSize.y);
+ 
+-        std::vector<float> pressedPos = m_pressedHistoryPositions | std::views::transform([&](const Vector2D& vec) {
++        std::vector<float> pressedPos = std::ranges::to<std::vector<float>>(m_pressedHistoryPositions | std::views::transform([&](const Vector2D& vec) {
+                                             Vector2D pPressed = ((vec - pMonitor->m_position) * pMonitor->m_scale);
+                                             pPressed          = pPressed.transform(Math::wlTransformToHyprutils(pMonitor->m_transform), pMonitor->m_pixelSize);
+                                             return std::array<float, 2>{pPressed.x / pMonitor->m_pixelSize.x, pPressed.y / pMonitor->m_pixelSize.y};
+                                         }) |
+-            std::views::join | std::ranges::to<std::vector<float>>();
++            std::views::join);
+ 
+         shader->setUniform2fv(SHADER_POINTER_PRESSED_POSITIONS, pressedPos.size(), pressedPos);
+ 
+         std::vector<float> pressedTime =
+-            m_pressedHistoryTimers | std::views::transform([](const CTimer& timer) { return timer.getSeconds(); }) | std::ranges::to<std::vector<float>>();
++            std::ranges::to<std::vector<float>>(m_pressedHistoryTimers | std::views::transform([](const CTimer& timer) { return timer.getSeconds(); }));
+ 
+         shader->setUniform1fv(SHADER_POINTER_PRESSED_TIMES, pressedTime.size(), pressedTime);
+ 

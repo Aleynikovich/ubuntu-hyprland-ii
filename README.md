@@ -1,0 +1,84 @@
+# ubuntu-hyprland-ii
+
+Hyprland 0.56 with [end-4/dots-hyprland](https://github.com/end-4/dots-hyprland) ("illogical-impulse") as an **extra login session** on Kubuntu 24.04, next to an untouched Plasma X11 session.
+
+The upstream installer is Arch-first, and on Ubuntu it only offers an experimental Nix route that doesn't match the current (Lua-config) dots. This repo builds everything from source into one folder in your home instead.
+
+Tested 2026-10-02: Kubuntu 24.04.5, Plasma 5.27 X11, SDDM, Lenovo Legion 7 16IRX9 with an RTX 4070 (dGPU-only/MUX mode, driver 595, `nvidia_drm modeset=1`). Isaac Sim runs in both sessions.
+
+## Quick start
+
+```bash
+git clone <this repo> ~/src/ubuntu-hyprland-ii && cd ~/src/ubuntu-hyprland-ii
+./setup.sh --list        # what each phase does
+./setup.sh 00            # read-only preflight
+./setup.sh 10            # optional: remove all snaps + pin snapd (asks first, backs up ~/snap)
+./setup.sh               # 00 15 20 30 40 50 60: backup, deps, build (~30-60 min), runtime, dots, login entry
+./setup.sh 70            # optional: VS Code from Microsoft's apt repo
+```
+
+Log out and pick **Hyprland (illogical-impulse)** in SDDM. Phases can be re-run: the build is resumable (stamps in `~/src/hypr/.stamps`); to rebuild one component, delete its stamp and run `phases/30-build.sh <component>`.
+
+## What goes where
+
+| Where | What |
+|---|---|
+| `~/.local/opt/hyprland` (`PREFIX`) | Hyprland, Quickshell, Qt 6.10, KF6 Kirigami, newer wayland/libinput/xkbcommon/libei/PipeWire-client, tools |
+| `~/src/hypr` (`SRC`) | sources, build trees, logs, lists of apt packages installed (for rollback) |
+| `~/.config/{hypr,quickshell,fuzzel,foot,matugen,wlogout,fish,xdg-desktop-portal}` | dots: **only copied if the folder doesn't exist** |
+| `~/.local/share/{fonts/illogical-impulse,icons,themes}` | fonts, Bibata cursor, adw-gtk3 |
+| `/usr/share/wayland-sessions/hyprland-ii.desktop` | the only file written outside your home (besides apt packages) |
+
+Not touched: Plasma configs (`kdeglobals`, `dolphinrc`, `konsolerc`, `kitty`, `fontconfig`, ...), user groups, `gsettings`, `/etc/pam.d`, the NVIDIA driver, anything in `config.env`'s `PROTECTED_UNITS` (fingerprinted before and checked after every run).
+
+## How it stays isolated
+
+- **RPATH, not `LD_LIBRARY_PATH`.** Every binary carries its own library path, so the session sets no library or QML path variables and apps launched from Hyprland (Isaac Sim, etc.) get the normal system libraries.
+- **apt: new packages only.** Each apt phase dry-runs first and refuses to proceed if an existing package would be upgraded or removed.
+- **Private Qt.** Qt 6.10 comes from Qt's official binaries (aqtinstall); Ubuntu's Qt 6.4 is left alone. The shell's QML modules are linked into the private Qt's `qml/` folder.
+- **pkg-config filter.** CMake otherwise resolves private libs to `/usr/lib` copies (via `-L/usr/lib/...` from `libseat.pc`); `tools/bin/pkg-config-filtered` strips system `-L` flags.
+
+## Ubuntu-specific workarounds
+
+- **Compiler:** Hyprland 0.56 uses C++26 `#embed`; built with `clang-20` from Ubuntu updates against the system libstdc++ 14.
+- **`patches/`:** libstdc++ 14 lacks a few C++23/26 library bits (`vector::append_range`, `string + string_view`, `ranges::starts_with`), and clang-20 + libstdc++ 14 trips on `range | std::ranges::to<T>()`. The patches swap these for equivalent C++20 code (17 one-line changes). hyprsunset's patch keeps its systemd unit inside `PREFIX`.
+- **Built because noble lacks or has too-old versions:** wayland 1.26, wayland-protocols 1.49, libinput 1.32, xkbcommon 1.13, libdisplay-info 0.4, libei 1.6, Lua 5.5, xcb-util-errors, readline (no ncurses-dev needed), PipeWire 1.2 client lib (xdph needs ≥ 1.1.82), sdbus-c++ 2, cpptrace with libunwind.
+- **Plasma 5 vs the dots' KDE 6 expectations:** `session-bin/kcmshell6` forwards to `kcmshell5`.
+- **ImageMagick 6:** `session-bin/magick` maps IM7-style calls to IM6 tools.
+- **Lock screen:** Quickshell's lock and the hyprlock fallback both use `/etc/pam.d/login` (hyprlock is configured with `auth:pam:module = login`), so no PAM file is added.
+- **Icons:** `QS_ICON_THEME=breeze-dark` (the private Qt has no KDE platform theme).
+- **VS Code on Hyprland:** `~/.vscode/argv.json` gets `"password-store": "gnome-libsecret"` (Hyprland isn't auto-detected).
+
+## Known issues
+
+- **Don't switch to a text console (Ctrl+Alt+F*n*) inside Hyprland**: aquamarine segfaults when the seat is disabled. Log out instead.
+- Not set up: `ydotool` and `ddcutil` (need the `input`/`i2c` groups), `swappy`, `songrec`, EasyEffects.
+- The session wrapper's NVIDIA variables assume a dGPU-only (MUX) laptop or a desktop; review them on hybrid graphics.
+
+## Rollback
+
+Each phase script's header has its own rollback line. Everything at once:
+
+```bash
+sudo rm /usr/share/wayland-sessions/hyprland-ii.desktop
+sudo apt-get purge $(cat ~/src/hypr/apt-installed-build.txt ~/src/hypr/apt-installed-runtime.txt) && sudo apt-get autoremove
+systemctl --user disable xdg-desktop-portal-hyprland.service
+rm -rf ~/.local/opt/hyprland ~/.local/state/quickshell \
+       ~/.local/share/dbus-1/services/org.freedesktop.impl.portal.desktop.hyprland.service \
+       ~/.local/share/xdg-desktop-portal/portals/hyprland.portal
+xargs -a ~/src/hypr/dots-installed.txt rm -rf     # only the config dirs this repo created
+rm -rf ~/src/hypr
+```
+
+Config backups from phase 15 are in `~/backups/config-*/`.
+
+## Installing other software (no snaps, no Flatpak)
+
+1. `sudo apt install <pkg>` from Ubuntu's repos.
+2. The vendor's signed apt repo (key in `/etc/apt/keyrings`, repo in `/etc/apt/sources.list.d/*.sources`); see `phases/70-vscode.sh` for the pattern, including checking the key fingerprint.
+3. A vendor `.deb`: `sudo apt install ./file.deb`.
+4. Arch/AUR-only things: an Arch [distrobox](https://distrobox.it) container, with apps exported to the host launcher.
+
+## Updating
+
+Bump a tag in `phases/30-build.sh` (or `QT_VER`/`DOTS_COMMIT` in `config.env`), delete the component's source dir and stamp in `~/src/hypr`, and re-run that component. Check that the patches still apply; upstream may have changed the patched lines.

@@ -1,0 +1,3 @@
+#!/bin/sh
+# Ubuntu 24.04 ships Plasma 5: illogical-impulse calls kcmshell6; forward to kcmshell5 (Hyprland session PATH only).
+exec /usr/bin/kcmshell5 "$@"

@@ -1,0 +1,6 @@
+#!/bin/sh
+# Ubuntu 24.04 has ImageMagick 6 (no `magick`). Map IM7-style calls onto IM6 tools (Hyprland session PATH only).
+case "$1" in
+  identify|convert|mogrify|composite|montage|compare|stream|conjure|import|display|animate) t=$1; shift; exec "/usr/bin/$t" "$@";;
+  *) exec /usr/bin/convert "$@";;
+esac

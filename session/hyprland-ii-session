@@ -1,0 +1,12 @@
+#!/bin/sh
+# SDDM session entry for Hyprland (illogical-impulse). Everything lives in ~/.local/opt/hyprland; nothing is installed system-wide.
+# No LD_LIBRARY_PATH / QML_IMPORT_PATH: binaries carry RPATH, so apps launched from here (e.g. Isaac Sim) see the normal system libs.
+P="$HOME/.local/opt/hyprland"
+export PATH="$P/session-bin:$PATH"
+export XDG_CURRENT_DESKTOP=Hyprland XDG_SESSION_DESKTOP=Hyprland XDG_SESSION_TYPE=wayland
+export XDG_DATA_DIRS="$P/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+# NVIDIA (discrete-only mode, driver 595, nvidia_drm modeset=1)
+export LIBVA_DRIVER_NAME=nvidia __GLX_VENDOR_LIBRARY_NAME=nvidia GBM_BACKEND=nvidia-drm NVD_BACKEND=direct
+export ELECTRON_OZONE_PLATFORM_HINT=auto
+export QS_ICON_THEME=breeze-dark
+exec "$P/bin/start-hyprland" --path "$P/bin/Hyprland" --no-nixgl
