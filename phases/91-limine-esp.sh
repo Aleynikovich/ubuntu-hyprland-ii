@@ -41,20 +41,27 @@ exec /usr/local/sbin/limine-esp-sync "$1"
 EOF
 sudo chmod 755 /etc/kernel/postinst.d/zz-limine-esp /etc/initramfs/post-update.d/limine-esp
 
-step "Keep the currently-booted kernel as the fallback, then sync the newest"
+step "Sync the newest kernel to the ESP (the previous kernel is kept as the fallback entry)"
 RUNNING=$(uname -r)
-sudo cp -f "/boot/vmlinuz-$RUNNING" "$ESP/vmlinuz.old"
-sudo cp -f "/boot/initrd.img-$RUNNING" "$ESP/initrd.img.old"
 NEWEST=$(sudo sh -c 'ls /boot/vmlinuz-* | sed "s|.*/vmlinuz-||" | sort -V | tail -1')
+if [ ! -f "$ESP/vmlinuz.old" ]; then   # first run: seed the fallback with the kernel that is running now
+  sudo cp -f "/boot/vmlinuz-$RUNNING" "$ESP/vmlinuz.old"
+  sudo cp -f "/boot/initrd.img-$RUNNING" "$ESP/initrd.img.old"
+fi
 sudo /usr/local/sbin/limine-esp-sync "$NEWEST"
-# the sync saved the old ESP copy over *.old; put the running kernel back there in case they differed
-sudo cp -f "/boot/vmlinuz-$RUNNING" "$ESP/vmlinuz.old"; sudo cp -f "/boot/initrd.img-$RUNNING" "$ESP/initrd.img.old"
+# label of the fallback entry = the kernel actually stored there
+PREV=$(sudo strings "$ESP/vmlinuz.old" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+-[0-9]+-generic' | head -1 || true)
+[ -n "$PREV" ] || PREV=previous
+RUNNING=$PREV
 
 step "limine.conf: resume args + fallback entry"
 UUID=$(findmnt -no UUID /)
 OFFSET=$(sudo filefrag -v /swap.img | awk '$1=="0:" && !s {sub(/\.\.$/,"",$4); print $4; s=1}')
 [[ "$UUID" =~ ^[0-9a-f-]+$ && "$OFFSET" =~ ^[0-9]+$ ]] || die "Could not determine resume UUID/offset."
-CMD="root=/dev/mapper/ubuntu--vg-ubuntu--lv ro quiet splash resume=UUID=$UUID resume_offset=$OFFSET"
+# s2idle, not S3 "deep": after S3 the NVIDIA driver never re-lights the eDP panel (black even on the text console).
+CMD="root=/dev/mapper/ubuntu--vg-ubuntu--lv ro quiet splash mem_sleep_default=s2idle resume=UUID=$UUID resume_offset=$OFFSET"
+# Pinned panel EDID (phase 93): main entry only, so the previous-kernel entry stays a clean fallback.
+EDID_ARG=""; [ -f /usr/lib/firmware/edid/eDP-1.bin ] && EDID_ARG=" drm.edid_firmware=eDP-1:edid/eDP-1.bin"
 for f in "$ESP/limine.conf" "$ESP/EFI/limine/limine.conf"; do
   [ -f "$f.bak" ] || sudo cp -p "$f" "$f.bak"
   sudo tee "$f" >/dev/null <<EOF
@@ -64,7 +71,7 @@ timeout: 5
     protocol: linux
     kernel_path: boot():/vmlinuz
     module_path: boot():/initrd.img
-    cmdline: $CMD
+    cmdline: $CMD$EDID_ARG
 
 /Ubuntu ($RUNNING, previous)
     protocol: linux
