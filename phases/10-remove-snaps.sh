@@ -22,8 +22,6 @@ echo "apt dry run of 'purge snapd':"
 apt-get -s purge snapd 2>/dev/null | grep -E '^(Purg|Remv)' || true
 confirm "Proceed?" || die "Aborted."
 
-[ -n "$PROTECTED_UNITS" ] && protected_fingerprint > "$B/protected-before.txt"
-
 step "Backing up ~/snap (Steam game libraries excluded) and ~/.mozilla to $B"
 ( cd ~ && tar --exclude='snap/steam/common/.local/share/Steam/steamapps' -czf "$B/snap-home.tar.gz" snap $( [ -d .mozilla ] && echo .mozilla ) )
 ls -lh "$B/snap-home.tar.gz"
@@ -51,5 +49,4 @@ fi
 rm -rf ~/snap
 
 apt-cache policy snapd | head -3
-[ -f "$B/protected-before.txt" ] && protected_check "$B/protected-before.txt"
 ok "Snaps removed. Backup: $B"

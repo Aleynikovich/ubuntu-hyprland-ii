@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Run the phases in order, or pick some. Every phase can also be run directly: phases/NN-name.sh
+# Either way, lib/common.sh fingerprints PROTECTED_* (config.env) first and fails (exit 3) if they changed.
 #   ./setup.sh                 all default phases
 #   ./setup.sh 30 40           only those phases (by number prefix)
 #   ./setup.sh --list
@@ -17,9 +18,6 @@ if [ "${1:-}" = --list ] || [ "${1:-}" = -h ]; then
 fi
 [ $# -gt 0 ] && SEL=("$@") || SEL=("${DEFAULT[@]}")
 
-before=$(mktemp); trap 'rm -f "$before"' EXIT
-[ -n "$PROTECTED_UNITS" ] && protected_fingerprint > "$before"
-
 for n in "${SEL[@]}"; do
   f=$(ls "$REPO"/phases/"$n"-*.sh 2>/dev/null | head -1)
   [ -n "$f" ] || die "No phase $n (see --list)"
@@ -27,5 +25,4 @@ for n in "${SEL[@]}"; do
   bash "$f"
 done
 
-[ -n "$PROTECTED_UNITS" ] && protected_check "$before"
 ok "Done: ${SEL[*]}"

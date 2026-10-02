@@ -29,7 +29,7 @@ systemctl is-active sddm >/dev/null 2>&1 && echo "SDDM active" || warn "SDDM not
 step "Snaps"
 command -v snap >/dev/null && snap list 2>/dev/null | awk 'NR>1{print "  "$1}' || echo "snapd not installed"
 
-step "Protected units"
-if [ -n "$PROTECTED_UNITS" ]; then protected_fingerprint; else echo "(none configured)"; fi
+step "Protected state (PROTECTED_* in config.env)"
+protected_fingerprint | grep . || echo "(none configured)"
 
 ok "Preflight done."

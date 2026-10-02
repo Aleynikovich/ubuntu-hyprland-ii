@@ -56,5 +56,6 @@ ln -sfn "$P/share/xdg-desktop-portal/portals/hyprland.portal" ~/.local/share/xdg
 systemctl --user link "$P/lib/systemd/user/xdg-desktop-portal-hyprland.service" 2>/dev/null || true
 
 step "Config check"
-XDG_RUNTIME_DIR=$(mktemp -d) "$P/bin/Hyprland" --verify-config -c ~/.config/hypr/hyprland.lua 2>&1 | tail -1
+rt=$(mktemp -d); at_exit 'rm -rf "$rt"'
+XDG_RUNTIME_DIR=$rt "$P/bin/Hyprland" --verify-config -c ~/.config/hypr/hyprland.lua 2>&1 | tail -1
 ok "Dots installed. Copied dirs are listed in $LOG"

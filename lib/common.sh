@@ -35,18 +35,43 @@ apt_install_new_only(){
   sudo apt-get install -y --no-install-recommends "$@"
 }
 
-# Record/compare the state of PROTECTED_UNITS (and their package) so phases can prove they didn't change them.
+# Record/compare the state of PROTECTED_UNITS/PACKAGES/PATHS (config.env) so every run can prove it didn't change them.
 protected_fingerprint(){
-  local u
+  local u p f
   for u in $PROTECTED_UNITS; do
-    printf '%s active=%s enabled=%s\n' "$u" "$(systemctl is-active "$u" 2>/dev/null)" "$(systemctl is-enabled "$u" 2>/dev/null)"
-    local exe; exe=$(systemctl show -p ExecStart --value "$u" 2>/dev/null | grep -oE 'path=[^ ;]+' | head -1 | cut -d= -f2)
-    [ -n "$exe" ] && dpkg -S "$exe" 2>/dev/null | cut -d: -f1 | xargs -r dpkg-query -W -f='  pkg ${Package} ${Version}\n'
+    printf 'unit %s active=%s enabled=%s def=%s\n' "$u" "$(systemctl is-active "$u" 2>/dev/null)" \
+      "$(systemctl is-enabled "$u" 2>/dev/null)" "$(systemctl cat "$u" 2>/dev/null | sha256sum | cut -c1-16)"
+  done
+  for p in $PROTECTED_PACKAGES; do
+    printf 'pkg %s %s\n' "$p" "$(dpkg-query -W -f='${Version} ${db:Status-Abbrev}' "$p" 2>/dev/null || echo absent)"
+  done
+  for f in $PROTECTED_PATHS; do
+    printf 'path %s %s\n' "$f" "$(stat -c '%U:%G %a %F' "$f" 2>/dev/null || echo absent)"
   done
 }
-protected_check(){ # protected_check <before-file>
-  [ -z "$PROTECTED_UNITS" ] && return 0
+protected_check(){ # protected_check <before-file>; returns 1 if anything changed
   local after; after=$(protected_fingerprint)
-  if diff <(cat "$1") <(echo "$after") >/dev/null; then ok "Protected units unchanged: $PROTECTED_UNITS"
-  else warn "Protected units CHANGED:"; diff <(cat "$1") <(echo "$after") || true; fi
+  if [ "$after" = "$(cat "$1")" ]; then ok "Protected state unchanged (PROTECTED_* in config.env)."; return 0; fi
+  warn "PROTECTED STATE CHANGED (PROTECTED_* in config.env):"; diff "$1" <(echo "$after") >&2 || true; return 1
 }
+
+# Cleanup hooks: use `at_exit 'cmd'` instead of `trap ... EXIT`, which would replace the guard below.
+_AT_EXIT=()
+at_exit(){ _AT_EXIT+=("$1"); }
+_on_exit(){
+  local rc=$? c
+  for c in "${_AT_EXIT[@]}"; do eval "$c" || true; done
+  if [ -n "${_PROTECTED_OWNER:-}" ]; then
+    protected_check "$HII_PROTECTED_BEFORE" || { [ "$rc" -ne 0 ] || rc=3; }
+    rm -f "$HII_PROTECTED_BEFORE"
+  fi
+  exit "$rc"
+}
+trap _on_exit EXIT
+
+# Guard: the outermost script (setup.sh, or a phase run on its own) fingerprints first and checks on exit;
+# nested phases inherit HII_PROTECTED_BEFORE and leave the check to it. Exit code 3 = protected state changed.
+if [ -z "${HII_PROTECTED_BEFORE:-}" ] && [ -n "$PROTECTED_UNITS$PROTECTED_PACKAGES$PROTECTED_PATHS" ]; then
+  HII_PROTECTED_BEFORE=$(mktemp); export HII_PROTECTED_BEFORE; _PROTECTED_OWNER=1
+  protected_fingerprint > "$HII_PROTECTED_BEFORE"
+fi

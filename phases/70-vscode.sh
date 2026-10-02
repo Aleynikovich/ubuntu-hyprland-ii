@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # OPTIONAL: VS Code from Microsoft's apt repo (no snap/flatpak), plus secret-tool. Key is checked against
 # Microsoft's published fingerprint before it is trusted.
-# Rollback: sudo apt-get purge code && sudo rm /etc/apt/sources.list.d/vscode.sources /etc/apt/keyrings/packages.microsoft.gpg
+# Rollback: sudo apt-get purge $(cat "$SRC/apt-installed-vscode.txt") && sudo rm /etc/apt/sources.list.d/vscode.sources /etc/apt/keyrings/packages.microsoft.gpg
 set -euo pipefail
 source "$(dirname "$0")/../lib/common.sh"
 
 EXPECTED_FPR=BC528686B50D79E339D3721CEB3E94ADBE1229CF
-tmp=$(mktemp); trap 'rm -f "$tmp"' EXIT
+tmp=$(mktemp); at_exit 'rm -f "$tmp"'
 curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > "$tmp"
 fpr=$(gpg --show-keys --with-colons "$tmp" | awk -F: '/^fpr/{print $10; exit}')
 [ "$fpr" = "$EXPECTED_FPR" ] || die "Microsoft key fingerprint mismatch: $fpr"
@@ -25,7 +25,8 @@ EOF
 # Otherwise the package's postinst adds a duplicate vscode.list ("configured multiple times" apt errors).
 echo "code code/add-microsoft-repo boolean false" | sudo debconf-set-selections
 sudo apt-get update
-sudo apt-get install -y code libsecret-tools
+mkdir -p "$SRC"
+apt_install_new_only "$SRC/apt-installed-vscode.txt" code libsecret-tools
 
 # Hyprland isn't recognised as a desktop by VS Code's keyring detection: force gnome-keyring (libsecret).
 A=$HOME/.vscode/argv.json
