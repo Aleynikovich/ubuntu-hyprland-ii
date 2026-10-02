@@ -1,4 +1,3 @@
-kitty
 fuzzel
 wl-clipboard
 cliphist

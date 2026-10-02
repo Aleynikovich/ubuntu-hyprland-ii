@@ -24,10 +24,10 @@ git -C "$DOTS" checkout -q "$DOTS_COMMIT"
 git -C "$DOTS" submodule update -q --init --recursive
 
 touch "$LOG"
-# Terminal: kitty (the dots try foot first); text editor: VS Code (the dots try kate first). custom/variables.lua is the dots' override file and survives updates.
+# Terminal: foot (see ~/.config/foot/foot.ini); text editor: VS Code (the dots try kate first). custom/variables.lua is the dots' override file and survives updates.
 if [ ! -s ~/.config/hypr/custom/variables.lua ]; then
   mkdir -p ~/.config/hypr/custom
-  printf -- '-- Personal overrides (loaded after hyprland/variables.lua; survives dots updates)\nterminal = "kitty -1"\ntextEditor = "code"\n' > ~/.config/hypr/custom/variables.lua
+  printf -- '-- Personal overrides (loaded after hyprland/variables.lua; survives dots updates)\nterminal = "foot"\ntextEditor = "code"\n' > ~/.config/hypr/custom/variables.lua
 fi
 for d in "${COPY[@]}"; do
   if [ -e "$HOME/.config/$d" ]; then echo "skip (exists): ~/.config/$d"; continue; fi
