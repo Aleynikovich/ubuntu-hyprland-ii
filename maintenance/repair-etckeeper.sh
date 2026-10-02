@@ -5,7 +5,7 @@
 #   2. delete empty object files
 #   3. if HEAD's history is still broken: point the branch at the newest intact commit from the reflog (asks),
 #      or, if there is none, start a fresh history (asks)
-#   4. rebuild the index from that commit and commit the current /etc
+#   4. rebuild the index (staging area) from that commit and commit the current /etc
 # Rollback: sudo rm -rf /etc/.git && sudo tar -xzf /root/etc-git-<timestamp>.tar.gz -C /etc
 set -euo pipefail
 source "$(dirname "$0")/../lib/common.sh"
@@ -50,8 +50,9 @@ else
     sudo etckeeper init
   fi
 fi
-# The index may still point at deleted objects; a mixed reset rebuilds it from HEAD without touching /etc.
-g rev-parse -q --verify HEAD >/dev/null && g reset -q
+# The index (staging area) may point at objects that are gone, and then even `git reset` can't read it.
+# Rebuild it from HEAD; the files in /etc are not touched.
+if g rev-parse -q --verify HEAD >/dev/null; then sudo rm -f /etc/.git/index && g read-tree HEAD; fi
 
 step "Commit the current /etc"
 sudo etckeeper commit "etckeeper repair ($TS): recommit /etc after a corrupt object" || true
