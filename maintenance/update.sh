@@ -23,7 +23,7 @@ while [ $# -gt 0 ]; do
     --check) MODE=check ;;
     --post) MODE=post ;;
     --unattended) MODE=unattended ;;
-    --since) SINCE=${2:?--since needs a time}; shift ;;
+    --since) SINCE=$(date -d "${2:?--since needs a time}" '+%F %T' 2>/dev/null) || die "--since: not a date: $2"; shift ;;
     --yes|-y) ASSUME_YES=1 ;;
     --allow-removals) ALLOW_REMOVALS=1 ;;
     --allow-protected) ALLOW_PROTECTED=1 ;;
@@ -38,7 +38,7 @@ done
 UPD=$SRC/update
 CACHE=$UPD/prefix-syslibs.tsv        # <ELF relative to PREFIX> <TAB> <system lib path> <TAB> <package>
 BASELINE=$UPD/ldd-missing-baseline.txt  # <ELF> <TAB> <soname> already unresolved before (e.g. Qt's optional SQL drivers)
-ESP=/boot/efi
+ESP=${UPDATE_ESP:-/boot/efi}   # override: testing aid
 mkdir -p "$UPD"
 TMP=$(mktemp -d)
 # shellcheck disable=SC2016  # expanded when the hook runs
@@ -194,7 +194,7 @@ simulate(){
                new = ""; origin = ""
                if (match(rest, /\(([^ ]+) ([^)]*)\)/)) { s = substr(rest, RSTART + 1, RLENGTH - 2); split(s, a, " "); new = a[1]; origin = a[2] }
                print (old == "" ? "new" : "upgrade") "\t" name "\t" full "\t" old "\t" new "\t" origin; next }
-    /^Remv / { name = $2; full = $2; sub(/:.*/, "", name); old = $3; gsub(/[][]/, "", old)
+    /^(Remv|Purg) / { name = $2; full = $2; sub(/:.*/, "", name); old = $3; gsub(/[][]/, "", old)
                print "remove\t" name "\t" full "\t" old "\t\t"; next }' "$TMP/sim" > "$TMP/plan"
 }
 
@@ -240,11 +240,11 @@ summarize(){
   show "Session/boot plumbing (log out or reboot afterwards):" "$PLUMBING_RE"
 
   # system libs the $PREFIX build links against
-  cut -f3 "$CACHE" | grep -vx '?' | sort -u > "$TMP/prefixpkgs"
+  awk -F'\t' '$3 != "?" { print $3 }' "$CACHE" | sort -u > "$TMP/prefixpkgs"
   awk -F'\t' 'NR == FNR { p[$1] = 1; next } ($2 in p) { print $2 }' "$TMP/prefixpkgs" "$TMP/plan" | sort -u > "$TMP/hit"
   if [ -s "$TMP/hit" ]; then
     printf '\n%sSystem libraries the %s build links against (%s of %s such packages):%s\n' "$c_warn" "$PREFIX" \
-      "$(grep -c . "$TMP/hit")" "$(grep -c . "$TMP/prefixpkgs")" "$c_off"
+      "$(wc -l < "$TMP/hit")" "$(wc -l < "$TMP/prefixpkgs")" "$c_off"
     awk -F'\t' 'NR == FNR { h[$1] = 1; next } ($2 in h) { printf "  %-45s %s -> %s\n", $3, ($4 == "" ? "-" : $4), $5 }' "$TMP/hit" "$TMP/plan"
     echo "  Components using them (same-release updates keep the ABI; a session restart picks them up):"
     # shellcheck disable=SC2046
@@ -324,8 +324,11 @@ EOF
 }
 
 # ---------------------------------------------------------------- post-checks
-nvidia_user_ver(){ dpkg-query -W -f='${Version}\n' 'nvidia-utils-*' 2>/dev/null | grep -m1 . | cut -d- -f1; }
-esp_kver(){ strings "$1" 2>/dev/null | grep -m1 -oE '^[0-9]+\.[0-9]+\.[0-9]+-[0-9]+-generic' || true; }
+nvidia_user_ver(){ # upstream version of the installed (status ii) NVIDIA userspace, empty if none
+  { dpkg-query -W -f='${db:Status-Abbrev}\t${Version}\n' 'nvidia-utils-*' 2>/dev/null || true; } |
+    awk -F'\t' '$1 ~ /^ii/ && !done { v = $2; sub(/-.*/, "", v); print v; done = 1 }'
+}
+esp_kver(){ strings "$1" 2>/dev/null | grep -m1 -oE '^[0-9]+\.[0-9]+\.[0-9]+-[0-9]+-(generic|lowlatency)' || true; }
 same_file(){ # a b: 0 same, 1 different, 2 unknown (unreadable without root)
   if [ -r "$1" ] && [ -r "$2" ]; then cmp -s "$1" "$2" && return 0 || return 1; fi
   if can_sudo; then sudo -n cmp -s "$1" "$2" && return 0 || return 1; fi
@@ -345,38 +348,110 @@ check_kernel_modules(){ # kver label
     ok "  $2 kernel $k: nvidia $mv ($(modinfo -k "$k" -n nvidia | sed "s|/lib/modules/$k/||"))"
   fi
 }
+# Top-level Limine entries of a limine.conf: "<n>\t<name>\t<kernel path>\t<first module path>\t<cmdline>"
+limine_entries(){
+  awk '
+    function val(l) { sub(/^[^:]*:[ \t]*/, "", l); sub(/[ \t]+$/, "", l); return l }
+    function flush() { if (n) print n "\t" name "\t" k "\t" m "\t" c }
+    /^\/[^\/]/ { flush(); n++; name = substr($0, 2); k = m = c = ""; next }
+    n && /^[ \t]*(kernel_path|path):/ && k == "" { k = val($0) }
+    n && /^[ \t]*module_path:/ && m == "" { m = val($0) }
+    n && /^[ \t]*(cmdline|kernel_cmdline):/ && c == "" { c = val($0) }
+    END { flush() }' "$1"
+}
+esp_file(){ local p=${1%%#*}; p=$(printf '%s' "$p" | sed -E 's/^[a-z]+\([^)]*\)://'); printf '%s%s\n' "$ESP" "$p"; }
+# Verify "boot():/path#<blake2b>" if it carries a hash. Returns 1 on mismatch.
+check_hash(){ # limine-path label
+  case $1 in *'#'*) ;; *) return 0 ;; esac
+  local want=${1##*#} f got; f=$(esp_file "$1")
+  if [ -r "$f" ]; then got=$(b2sum "$f" | cut -d' ' -f1)
+  elif can_sudo; then got=$(sudo -n b2sum "$f" | cut -d' ' -f1)
+  else echo "  ($2: BLAKE2b not verified, $f unreadable without root)"; return 0; fi
+  [ "${got,,}" = "${want,,}" ] || { bootbad "$2: BLAKE2b of $f does not match limine.conf (Limine will refuse to boot it)."; return 1; }
+  echo "  $2: BLAKE2b ok"
+}
+CHECKED_KVERS=" "
+check_kernel_once(){ case $CHECKED_KVERS in *" $1 "*) return 0 ;; esac; CHECKED_KVERS+="$1 "; check_kernel_modules "$@"; }
+# Default entry must boot the newest /boot kernel+initrd with the sleep/resume args; the next linux entry is the fallback.
+check_limine_conf(){ # conf newest
+  local conf=$1 newest=$2 d row n name k m c kf mf kv r a fb=""
+  echo "$conf:"
+  d=$(awk -F: '/^[ \t]*default_entry:/ { gsub(/[ \t]/, "", $2); print $2; exit }' "$conf")
+  [[ $d =~ ^[0-9]+$ ]] || d=1
+  limine_entries "$conf" > "$TMP/entries"
+  row=$(awk -F'\t' -v d="$d" '$1 == d' "$TMP/entries")
+  IFS=$'\t' read -r n name k m c <<< "$row" || true
+  if [ -z "$row" ] || [ -z "$k" ]; then bootbad "$conf: default entry #$d is missing or not a Linux entry."; return; fi
+  kf=$(esp_file "$k"); mf=$(esp_file "$m")
+  echo "  default: /$name -> ${kf#"$ESP"/} + ${mf#"$ESP"/}"
+  if [ ! -f "$kf" ]; then bootbad "$conf default entry: kernel $kf missing. Fix: sudo limine-esp-sync $newest"
+  else
+    kv=$(esp_kver "$kf")
+    [ "$kv" = "$newest" ] || bootbad "$conf default entry boots ${kv:-unknown}, not the newest kernel $newest. Fix: sudo limine-esp-sync $newest"
+    r=0; same_file "/boot/vmlinuz-$newest" "$kf" || r=$?
+    case $r in 1) bootbad "$kf differs from /boot/vmlinuz-$newest. Fix: sudo limine-esp-sync $newest" ;;
+                2) echo "  (kernel: version and size match; content not compared: /boot/vmlinuz-* is root-only and sudo needs a password)" ;; esac
+    check_hash "$k" "default kernel" || true
+  fi
+  if [ -z "$m" ] || [ ! -f "$mf" ]; then bootbad "$conf default entry: initrd ${mf:-<no module_path>} missing. Fix: sudo limine-esp-sync $newest"
+  else
+    r=0; same_file "/boot/initrd.img-$newest" "$mf" || r=$?
+    case $r in 1) bootbad "$mf differs from /boot/initrd.img-$newest. Fix: sudo limine-esp-sync $newest" ;;
+                2) echo "  (initrd: size matches; content not compared without root)" ;; esac
+    check_hash "$m" "default initrd" || true
+  fi
+  for a in mem_sleep_default=s2idle resume=UUID= resume_offset=; do
+    [[ " $c " == *" $a"* ]] || bootbad "$conf default entry cmdline lacks $a (phase 90/91; /etc/limine-esp.conf)."
+  done
+  if [ -f /usr/lib/firmware/edid/eDP-1.bin ] && [[ " $c " != *" drm.edid_firmware="* ]]; then
+    bootbad "$conf default entry cmdline lacks drm.edid_firmware= although /usr/lib/firmware/edid/eDP-1.bin exists (phase 93)."
+  fi
+  # fallback: the next Linux entry
+  row=$(awk -F'\t' -v d="$n" '$1 > d && $3 != "" { print; exit }' "$TMP/entries")
+  if [ -z "$row" ]; then warn "$conf: no fallback Linux entry after the default one."; FALLBACK_KV=""; return; fi
+  IFS=$'\t' read -r n name k m c <<< "$row" || true
+  kf=$(esp_file "$k"); mf=$(esp_file "$m")
+  echo "  fallback: /$name -> ${kf#"$ESP"/} + ${mf#"$ESP"/}"
+  [ -f "$kf" ] || { bootbad "$conf fallback entry: kernel $kf missing."; return; }
+  [ -n "$m" ] && [ -f "$mf" ] || bootbad "$conf fallback entry: initrd ${mf:-<no module_path>} missing."
+  check_hash "$k" "fallback kernel" || true
+  [ -z "$m" ] || [ ! -f "$mf" ] || check_hash "$m" "fallback initrd" || true
+  fb=$(esp_kver "$kf")
+  if [ -z "$fb" ]; then warn "$conf fallback entry: cannot read the kernel version of $kf."
+  else check_kernel_once "$fb" "fallback"; fi
+  FALLBACK_KV=$fb
+}
 check_boot(){
-  local newest running esp_new esp_old r
+  local newest running f confs=() c
   newest=$(find /boot -maxdepth 1 -name 'vmlinuz-*' -printf '%f\n' | sed 's/^vmlinuz-//' | sort -V | tail -1)
   running=$(uname -r)
+  [ -n "$newest" ] || { bootbad "No /boot/vmlinuz-* at all."; return; }
   echo "Kernels: running $running, newest installed $newest"
-  check_kernel_modules "$newest" newest
+  check_kernel_once "$newest" newest
   [ -s "/boot/initrd.img-$newest" ] || bootbad "No /boot/initrd.img-$newest. Fix: sudo update-initramfs -c -k $newest"
-  if [ ! -f "$ESP/limine.conf" ]; then warn "No $ESP/limine.conf (not booting via Limine?): ESP checks skipped."; return; fi
-  mountpoint -q "$ESP" || { bootbad "$ESP is not mounted: limine-esp-sync silently skipped. Fix: sudo mount $ESP && sudo limine-esp-sync $newest"; return; }
-  for f in /usr/local/sbin/limine-esp-sync /etc/kernel/postinst.d/zz-limine-esp /etc/initramfs/post-update.d/limine-esp; do
-    [ -x "$f" ] || bootbad "Missing sync hook $f (re-run phase 91)."
+  for c in "$ESP/limine.conf" "$ESP/EFI/limine/limine.conf"; do [ -f "$c" ] && confs+=("$c"); done
+  if [ ${#confs[@]} = 0 ]; then
+    if mountpoint -q "$ESP"; then warn "No limine.conf on $ESP (not booting via Limine?): ESP checks skipped."
+    else bootbad "$ESP is not mounted: cannot verify the ESP, and limine-esp-sync silently skips. Fix: sudo mount $ESP && sudo limine-esp-sync $newest"; fi
+    return
+  fi
+  [ -x /usr/local/sbin/limine-esp-sync ] || warn "/usr/local/sbin/limine-esp-sync missing: future kernels won't reach the ESP (re-run phase 91)."
+  for f in /etc/kernel/postinst.d/zz-limine-esp /etc/initramfs/post-update.d/limine-esp; do
+    [ -x "$f" ] || warn "Sync hook $f missing: future kernel/initrd updates won't reach the ESP (re-run phase 91)."
   done
-  esp_new=$(esp_kver "$ESP/vmlinuz")
-  [ "$esp_new" = "$newest" ] || bootbad "ESP vmlinuz is $esp_new, not the newest kernel $newest. Fix: sudo limine-esp-sync $newest"
-  r=0; same_file "/boot/vmlinuz-$newest" "$ESP/vmlinuz" || r=$?
-  case $r in 0) ;; 1) bootbad "ESP vmlinuz differs from /boot/vmlinuz-$newest. Fix: sudo limine-esp-sync $newest" ;;
-              2) echo "  (ESP vmlinuz: version and size match; content not compared: /boot/vmlinuz-* is root-only and sudo needs a password)" ;; esac
-  r=0; same_file "/boot/initrd.img-$newest" "$ESP/initrd.img" || r=$?
-  case $r in 0) ;; 1) bootbad "ESP initrd.img differs from /boot/initrd.img-$newest. Fix: sudo limine-esp-sync $newest" ;;
-              2) echo "  (ESP initrd: size matches; content not compared without root)" ;; esac
-  esp_old=$(esp_kver "$ESP/vmlinuz.old")
-  if [ -z "$esp_old" ]; then warn "No fallback kernel on the ESP ($ESP/vmlinuz.old)."
-  else check_kernel_modules "$esp_old" "fallback (ESP vmlinuz.old)"; fi
-  grep -q 'mem_sleep_default=s2idle' "$ESP/limine.conf" || bootbad "limine.conf lost mem_sleep_default=s2idle (re-run phase 91)."
-  grep -q 'resume=UUID=' "$ESP/limine.conf" || bootbad "limine.conf lost resume=UUID= (re-run phase 91)."
-  [ "$BOOT_FAIL" = 1 ] || ok "(b) Next boot: ESP has $newest (kernel+initrd = /boot), fallback ${esp_old:-none}, NVIDIA module present."
+  FALLBACK_KV=""
+  for c in "${confs[@]}"; do check_limine_conf "$c" "$newest"; done
+  [ "$BOOT_FAIL" = 1 ] || ok "(b) Next boot: Limine default = $newest (kernel+initrd = /boot, sleep/resume args), fallback ${FALLBACK_KV:-none}, NVIDIA modules present."
   [ "$running" = "$newest" ] || echo "  Reboot to run $newest (Limine default entry)."
   # loaded module vs (possibly upgraded) userspace
   local uv lv; uv=$(nvidia_user_ver); lv=$(cat /sys/module/nvidia/version 2>/dev/null || true)
   if [ -n "$uv" ] && [ -n "$lv" ] && [ "$uv" != "$lv" ]; then
     warn "REBOOT NEEDED: NVIDIA userspace is $uv, loaded module $lv. New GL/CUDA apps and a fresh Hyprland login fail until you reboot (don't just log out)."
   fi
+}
+modprobe_opt(){ # "<modprobe -c output>" param -> last value given to the nvidia module (later options win), or empty
+  printf '%s\n' "$1" | awk -v p="$2" '$1 == "options" && $2 == "nvidia" {
+    for (i = 3; i <= NF; i++) if (index($i, p "=") == 1) v = substr($i, length(p) + 2) } END { print v }'
 }
 check_sleep_setup(){
   local u s conf=/etc/modprobe.d/nvidia-sleep-fix.conf ksn dpm f0=$FAIL
@@ -386,8 +461,8 @@ check_sleep_setup(){
     s=$(systemctl is-enabled "$u.service" 2>/dev/null || true)
     [ "$s" = masked ] || bad "$u.service is '$s', not masked (phase 90). Fix: sudo systemctl mask $u.service"
   done
-  ksn=$(modprobe -c 2>/dev/null | awk '/^options nvidia /' | grep -oE 'NVreg_UseKernelSuspendNotifiers=[^ ]+' | tail -1 | cut -d= -f2)
-  dpm=$(modprobe -c 2>/dev/null | awk '/^options nvidia /' | grep -oE 'NVreg_DynamicPowerManagement=[^ ]+' | tail -1 | cut -d= -f2)
+  local mp; mp=$(modprobe -c 2>/dev/null || true)
+  ksn=$(modprobe_opt "$mp" NVreg_UseKernelSuspendNotifiers); dpm=$(modprobe_opt "$mp" NVreg_DynamicPowerManagement)
   [ "$ksn" = 1 ] || bad "Effective NVreg_UseKernelSuspendNotifiers is '${ksn:-unset}', not 1 (a driver package overrides $conf?)."
   [ "$dpm" = 0x00 ] || bad "Effective NVreg_DynamicPowerManagement is '${dpm:-unset}', not 0x00."
   if [ -f /etc/systemd/system/gpu-warm.service ]; then
@@ -423,7 +498,7 @@ post_checks(){ # [package...] that were upgraded
   check_sleep_setup
   if [ $# -gt 0 ]; then
     printf '%s\n' "$@" | sort -u > "$TMP/upgraded"
-    cut -f3 "$CACHE" ${PRE_CACHE:+"$PRE_CACHE"} | grep -vx '?' | sort -u > "$TMP/prefixpkgs"
+    awk -F'\t' '$3 != "?" { print $3 }' "$CACHE" ${PRE_CACHE:+"$PRE_CACHE"} | sort -u > "$TMP/prefixpkgs"
     comm -12 "$TMP/upgraded" "$TMP/prefixpkgs" > "$TMP/hit"
     if [ -s "$TMP/hit" ]; then
       echo "(e) Upgraded system libs used by $PREFIX: $(tr '\n' ' ' < "$TMP/hit")"
@@ -436,14 +511,30 @@ post_checks(){ # [package...] that were upgraded
   else
     echo "(e) No upgraded packages in the window."
   fi
-  date '+%F %T' > "$UPD/last-post"
   echo
   if [ "$BOOT_FAIL" = 1 ]; then
     printf '%s%s\n  DO NOT REBOOT: the next boot is not verified (see the warnings above).\n%s%s\n' "$c_err" "$(printf '%.0s#' {1..78})" "$(printf '%.0s#' {1..78})" "$c_off" >&2
     exit 4
   fi
   [ "$FAIL" = 0 ] || die "Post-checks failed (see above)."
+  date '+%F %T' > "$UPD/last-post"   # next --post window starts here (only after a clean pass)
   ok "All post-checks passed."
+}
+
+# ---------------------------------------------------------------- etckeeper
+etc_check(){ # 0 if /etc can be snapshotted
+  command -v etckeeper >/dev/null || { warn "etckeeper is not installed: /etc will not be snapshotted."; return 1; }
+  sudo test -d /etc/.git || { warn "/etc/.git is missing: etckeeper has no history (sudo etckeeper init)."; return 1; }
+  if ! sudo git -C /etc rev-parse -q --verify HEAD >/dev/null 2>&1 || ! sudo git -C /etc status --porcelain >/dev/null 2>&1; then
+    warn "/etc/.git is broken (git cannot read HEAD/index). Repair: maintenance/repair-etckeeper.sh. apt's own etckeeper hook may fail too."
+    return 1
+  fi
+}
+etc_commit(){ # message; commits only if /etc has uncommitted changes
+  sudo etckeeper unclean || return 0
+  sudo etckeeper commit "$1" && return 0
+  warn "etckeeper commit failed: /etc is NOT snapshotted ('$1'). Check: sudo git -C /etc status; repair: maintenance/repair-etckeeper.sh"
+  return 1
 }
 
 # ---------------------------------------------------------------- main
@@ -488,6 +579,8 @@ confirm "Snapshot, then run sudo apt-get full-upgrade with this plan?" || die "A
 
 step "Snapshot"
 sudo -v
+etc_ok=1; etc_check || etc_ok=0
+[ "$etc_ok" = 1 ] || confirm "Continue WITHOUT an /etc snapshot?" || die "Aborted; nothing changed."
 TS=$(date +%Y%m%d-%H%M%S); SNAP=$UPD/$TS; mkdir -p "$SNAP"
 cp "$TMP/sim" "$SNAP/simulation.txt"; cp "$TMP/plan" "$SNAP/plan.tsv"; cp "$CACHE" "$SNAP/prefix-syslibs.tsv"
 PRE_CACHE=$SNAP/prefix-syslibs.tsv
@@ -495,6 +588,7 @@ dpkg -l > "$SNAP/dpkg-l.txt"
 dpkg-query -W -f='${db:Status-Abbrev}\t${Package}:${Architecture}\t${Version}\n' > "$SNAP/versions-all.tsv"
 apt-mark showhold > "$SNAP/holds.txt"; apt-mark showmanual > "$SNAP/manual.txt"
 awk -F'\t' '$1 == "upgrade" { print $3 "=" $4 }' "$TMP/plan" > "$SNAP/old-versions.txt"
+awk -F'\t' '$1 == "remove" { print $3 "=" $4 }' "$TMP/plan" > "$SNAP/removed.txt"
 awk -F'\t' '$1 == "new" { print $3 }' "$TMP/plan" > "$SNAP/newly-installed.txt"
 # Which old versions could actually be reinstalled (still in an archive, or a .deb in apt's cache)?
 : > "$SNAP/downgrade-availability.txt"
@@ -503,25 +597,71 @@ while IFS='=' read -r p v; do
   elif ls /var/cache/apt/archives/"${p%%:*}"_"${v//:/%3a}"_*.deb >/dev/null 2>&1; then src=cache
   else src=NONE; fi
   printf '%s=%s\t%s\n' "$p" "$v" "$src" >> "$SNAP/downgrade-availability.txt"
-done < "$SNAP/old-versions.txt"
-n_none=$(grep -c $'\tNONE$' "$SNAP/downgrade-availability.txt" || true)
-{ echo '#!/bin/sh'; echo "# Reinstall the versions from before update.sh $TS (newly installed packages: see newly-installed.txt)"
-  echo "sudo apt-get install --allow-downgrades $(tr '\n' ' ' < "$SNAP/old-versions.txt")"; } > "$SNAP/downgrade.sh"
+done < <(cat "$SNAP/old-versions.txt" "$SNAP/removed.txt")
+n_none=$(awk -F'\t' '$2 == "NONE"' "$SNAP/downgrade-availability.txt" | wc -l)
+# apt-get install marks everything it names as manual: re-mark the ones that were automatic before.
+cut -d= -f1 "$SNAP/old-versions.txt" "$SNAP/removed.txt" | while IFS= read -r p; do
+  grep -qxF -e "$p" -e "${p%%:*}" "$SNAP/manual.txt" || printf '%s\n' "$p"
+done > "$SNAP/was-auto.txt"
+{
+  echo '#!/bin/sh'
+  echo "# Reinstall the package versions from before update.sh $TS (upgraded + removed ones)."
+  echo "# Versions marked NONE in downgrade-availability.txt can't be fetched any more; apt will say so."
+  echo 'set -e'
+  [ ! -s "$SNAP/old-versions.txt" ] && [ ! -s "$SNAP/removed.txt" ] ||
+    echo "sudo apt-get install --allow-downgrades $(cat "$SNAP/old-versions.txt" "$SNAP/removed.txt" | tr '\n' ' ')"
+  [ ! -s "$SNAP/was-auto.txt" ] || echo "sudo apt-mark auto $(tr '\n' ' ' < "$SNAP/was-auto.txt")"
+  [ ! -s "$SNAP/newly-installed.txt" ] ||
+    echo "# Newly installed by the upgrade (review before purging, e.g. a new kernel you booted): sudo apt-get purge $(tr '\n' ' ' < "$SNAP/newly-installed.txt")"
+} > "$SNAP/downgrade.sh"
 chmod +x "$SNAP/downgrade.sh"
 protected_fingerprint > "$SNAP/protected.txt"; cp -f "$SNAP/protected.txt" "$UPD/protected-last.txt"
 { ls -l /boot "$ESP"; cat "$ESP/limine.conf"; } > "$SNAP/boot.txt" 2>&1 || true
-echo "Snapshot: $SNAP ($(grep -c . "$SNAP/old-versions.txt" || true) old versions; $n_none of them not re-downloadable, see downgrade-availability.txt)"
-if command -v etckeeper >/dev/null && sudo etckeeper unclean; then
-  sudo etckeeper commit "update.sh: before full-upgrade ($TS)"
+echo "Snapshot: $SNAP ($(wc -l < "$SNAP/downgrade-availability.txt") old versions; $n_none of them not re-downloadable, see downgrade-availability.txt)"
+[ "$etc_ok" = 0 ] || etc_commit "update.sh: before full-upgrade ($TS)" ||
+  confirm "Continue WITHOUT an /etc snapshot?" || die "Aborted; nothing changed (snapshot kept in $SNAP)."
+
+# Belt and braces for PROTECTED_PACKAGES: hold them for the run (unless --allow-protected), then re-simulate
+# and abort if the plan is not exactly the one that was shown.
+HELD=""
+if [ "$ALLOW_PROTECTED" = 0 ]; then
+  for p in $PROTECTED_PACKAGES; do
+    dpkg-query -W -f='${db:Status-Abbrev}' "$p" 2>/dev/null | grep -q '^ii' || continue
+    grep -qxF "$p" "$SNAP/holds.txt" && continue
+    HELD+=" $p"
+  done
+  if [ -n "$HELD" ]; then
+    # shellcheck disable=SC2086  # word splitting wanted
+    sudo apt-mark hold $HELD >/dev/null
+    # shellcheck disable=SC2016  # expanded when the hook runs
+    at_exit 'sudo apt-mark unhold $HELD >/dev/null && echo "Released the temporary hold on:$HELD"'
+    echo "Held for this run:$HELD"
+  fi
+fi
+cp "$TMP/plan" "$TMP/plan.shown"
+simulate
+if ! cmp -s "$TMP/plan.shown" "$TMP/plan"; then
+  diff "$TMP/plan.shown" "$TMP/plan" >&2 || true
+  die "The upgrade plan changed since it was shown (see diff); nothing upgraded. Run again."
 fi
 
 step "apt-get full-upgrade (log: /var/log/apt/term.log)"
 APT_OPTS=()
 [ "$ALLOW_REMOVALS" = 1 ] || APT_OPTS+=(--no-remove)
-[ "${ASSUME_YES:-0}" = 1 ] && APT_OPTS+=(-y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
-set +e; sudo apt-get full-upgrade "${APT_OPTS[@]}"; rc=$?; set -e
+APT_ENV=()
+if [ "${ASSUME_YES:-0}" = 1 ]; then
+  APT_OPTS+=(-y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
+  APT_ENV=(env DEBIAN_FRONTEND=noninteractive)
+fi
+touch "$TMP/before-upgrade"
+set +e; sudo "${APT_ENV[@]}" apt-get full-upgrade "${APT_OPTS[@]}"; rc=$?; set -e
 [ "$rc" = 0 ] || warn "apt-get full-upgrade exited with $rc; running the post-checks anyway."
-command -v etckeeper >/dev/null && { sudo etckeeper unclean && sudo etckeeper commit "update.sh: after full-upgrade ($TS)" || true; }
+NEWCONF=$(sudo find /etc \( -name '*.dpkg-dist' -o -name '*.ucf-dist' -o -name '*.dpkg-new' \) -newer "$TMP/before-upgrade" 2>/dev/null || true)
+if [ -n "$NEWCONF" ]; then
+  warn "New maintainer versions of config files were set aside$( [ "${ASSUME_YES:-0}" = 1 ] && echo ' (--yes kept your old ones)'); review and merge:"
+  printf '%s\n' "$NEWCONF" | sed 's/^/  /'
+fi
+[ "$etc_ok" = 0 ] || etc_commit "update.sh: after full-upgrade ($TS)" || true
 # shellcheck disable=SC2046
 post_checks $(awk -F'\t' '$1 != "remove" { print $2 }' "$TMP/plan")
 [ "$rc" = 0 ] || exit 1
