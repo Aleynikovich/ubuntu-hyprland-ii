@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 # One-off: repair etckeeper's /etc/.git after a corrupt (empty) object ("bad object HEAD" on every apt run).
+# Applies when apt/dpkg runs (etckeeper's pre-/post-install hooks) or `sudo etckeeper commit` print errors like:
+#   fatal: bad object HEAD
+#   error: object file .git/objects/xx/... is empty
+#   fatal: loose object <sha> (stored in .git/objects/xx/...) is corrupt
+#   error: bad signature 0x00000000 / fatal: index file corrupt
+# typically after a crash, power loss or forced power-off while an apt run was committing /etc.
+# Refuses to run when `git -C /etc fsck --full` and reading the index both succeed (read-only check): nothing to repair.
 # Changes only /etc/.git; the files in /etc are never touched. Steps:
 #   1. back up /etc/.git to /root (root-only: it holds copies of /etc, including shadow)
 #   2. delete empty object files
@@ -15,6 +22,9 @@ intact(){ g rev-list --objects "$1" >/dev/null 2>&1; }   # every object reachabl
 grep -q '^VCS="git"' /etc/etckeeper/etckeeper.conf || die "etckeeper isn't configured for git."
 sudo -v
 sudo test -d /etc/.git || die "/etc/.git not found."
+if g fsck --full --no-dangling >/dev/null 2>&1 && g ls-files >/dev/null 2>&1; then
+  die "/etc/.git is healthy (fsck and index OK): nothing to repair, not running."
+fi
 TS=$(date +%Y%m%d-%H%M%S); BK=/root/etc-git-$TS.tar.gz
 
 step "Backup of /etc/.git -> $BK"

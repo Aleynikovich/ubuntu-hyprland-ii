@@ -5,6 +5,7 @@
 # Rollback: rm -rf "$PREFIX" "$SRC"
 set -euo pipefail
 source "$(dirname "$0")/../lib/common.sh"
+source "$REPO/lib/patches.sh"
 
 P=$PREFIX
 STAMPS=$SRC/.stamps
@@ -33,12 +34,10 @@ CMAKE=(-G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$P" -DCMAKE_I
 # Module scanning off: CMake 4 + C++26 wants clang-scan-deps, and nothing here uses C++ modules.
 CLANG=(-DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20 -DCMAKE_LINKER_TYPE=LLD -DCMAKE_CXX_SCAN_FOR_MODULES=OFF)
 
-apply_patches(){ # dir: apply patches/<dir>-*.patch once, right after cloning
-  local p
-  for p in "$REPO"/patches/"$1"-*.patch; do
-    [ -e "$p" ] || continue
-    echo "Applying $(basename "$p")"; git -C "$SRC/$1" apply "$p"
-  done
+apply_patches(){ # dir: apply its patches/<dir>-*.patch once, right after cloning (patches_for: same list --check-patches uses)
+  local p ps
+  mapfile -t ps < <(patches_for "$1")
+  for p in "${ps[@]}"; do echo "Applying $(basename "$p")"; git -C "$SRC/$1" apply "$p"; done
 }
 git_src(){ # url tag dir
   if [ ! -d "$SRC/$3" ]; then
@@ -65,6 +64,8 @@ cmake_build(){ rm -rf build; cmake -B build "${CMAKE[@]}" "$@"; cmake --build bu
 auto_build(){ NOCONFIGURE=1 autoreconf -fi; ./configure --prefix="$P" "$@"; make -j$JOBS; make install; }
 
 # ---------------- components ----------------
+# lib/patches.sh (setup.sh --check-patches, maintenance/bump.sh) reads url/tag/dir from these lines without building:
+# keep each `c_name(){ git_src|git_commit url tag dir` on one line.
 c_tools(){ # private cmake/meson/aqtinstall (Ubuntu's cmake 3.28 is too old) + pkg-config filter
   python3 -m venv "$P/tools"
   "$P/tools/bin/pip" install -q --upgrade pip

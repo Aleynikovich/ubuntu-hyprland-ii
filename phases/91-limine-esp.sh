@@ -4,6 +4,7 @@
 #   and restore /boot/efi/limine.conf + /boot/efi/EFI/limine/limine.conf from the *.bak next to them.
 set -euo pipefail
 source "$(dirname "$0")/../lib/common.sh"
+require_hw
 
 ESP=/boot/efi
 [ -f "$ESP/limine.conf" ] || die "No $ESP/limine.conf: this machine does not boot through Limine."

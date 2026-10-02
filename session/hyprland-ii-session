@@ -5,8 +5,37 @@ P="$HOME/.local/opt/hyprland"
 export PATH="$P/session-bin:$PATH"
 export XDG_CURRENT_DESKTOP=Hyprland XDG_SESSION_DESKTOP=Hyprland XDG_SESSION_TYPE=wayland
 export XDG_DATA_DIRS="$P/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
-# NVIDIA (discrete-only mode, driver 595, nvidia_drm modeset=1)
-export LIBVA_DRIVER_NAME=nvidia __GLX_VENDOR_LIBRARY_NAME=nvidia GBM_BACKEND=nvidia-drm NVD_BACKEND=direct
+# GPU, decided at login from /sys/class/drm (PCI GPUs only). The display GPU is the one with the built-in panel connected
+# (eDP/LVDS/DSI), else one with any output connected (boot_vga first), else the boot_vga one.
+#   NVIDIA drives the display (MUX dGPU mode, desktop): NVIDIA GL/GBM/VA-API vars (driver 595, nvidia_drm modeset=1).
+#   Other GPU drives it (Optimus, iGPU primary): no NVIDIA vars, so apps stay on the iGPU (offload with prime-run).
+#   Several GPUs: AQ_DRM_DEVICES lists the display GPU first (unless already set). One GPU: left unset.
+# This laptop (MUX, dGPU-only): card1 = NVIDIA, eDP-1 connected, no other GPU -> NVIDIA vars, AQ_DRM_DEVICES unset.
+# What was picked goes to stderr: ~/.local/share/sddm/wayland-session.log
+D=/sys/class/drm; cards= nv= gpu=
+conn(){ # conn CARD PATTERN... -> true if CARD has a connected output whose name matches one of the patterns
+  k=$1; shift
+  for p; do for s in "$D/$k"-$p/status; do [ "$(cat "$s" 2>/dev/null)" = connected ] && return 0; done; done; return 1
+}
+for c in "$D"/card[0-9]*; do
+  case ${c##*/} in *-*) continue ;; esac            # connectors (card1-eDP-1)
+  [ -r "$c/device/vendor" ] || continue             # simpledrm / non-PCI
+  c=${c##*/}
+  if [ "$(cat "$D/$c/device/boot_vga" 2>/dev/null)" = 1 ]; then cards="$c $cards"; else cards="$cards $c"; fi
+  [ "$(cat "$D/$c/device/vendor")" = 0x10de ] && nv="$nv $c"
+done
+for c in $cards; do conn "$c" 'eDP-*' 'LVDS-*' 'DSI-*' && { gpu=$c; break; }; done
+[ -n "$gpu" ] || for c in $cards; do conn "$c" '*' && { gpu=$c; break; }; done
+[ -n "$gpu" ] || for c in $cards; do gpu=$c; break; done
+case " $nv " in *" ${gpu:-none} "*)
+  export LIBVA_DRIVER_NAME=nvidia __GLX_VENDOR_LIBRARY_NAME=nvidia GBM_BACKEND=nvidia-drm NVD_BACKEND=direct ;;
+esac
+if [ -z "${AQ_DRM_DEVICES:-}" ] && [ "$(echo $cards | wc -w)" -gt 1 ]; then
+  AQ_DRM_DEVICES=/dev/dri/$gpu
+  for c in $cards; do [ "$c" = "$gpu" ] || AQ_DRM_DEVICES="$AQ_DRM_DEVICES:/dev/dri/$c"; done
+  export AQ_DRM_DEVICES
+fi
+echo "hyprland-ii-session: gpus=[$(echo $cards)] nvidia=[$(echo $nv)] display=${gpu:-none} GBM_BACKEND=${GBM_BACKEND:-} AQ_DRM_DEVICES=${AQ_DRM_DEVICES:-}" >&2
 export ELECTRON_OZONE_PLATFORM_HINT=auto
 export QS_ICON_THEME=breeze-dark
 exec "$P/bin/start-hyprland" --path "$P/bin/Hyprland" --no-nixgl

@@ -9,6 +9,9 @@ echo "$PRETTY_NAME, kernel $(uname -r), $(uname -m)"
 [ "${VERSION_ID:-}" = "24.04" ] || warn "Only tested on Ubuntu/Kubuntu 24.04 (this is ${VERSION_ID:-unknown})."
 [ "$(uname -m)" = x86_64 ] || die "x86_64 only."
 
+step "Hardware (HW_TESTED in config.env; phases 90-95 are machine-specific)"
+require_hw report
+
 step "Disk"
 free_gb=$(df --output=avail -BG / | tail -1 | tr -dc 0-9)
 echo "Free on /: ${free_gb} GB (need ~${MIN_FREE_GB} GB for the build)"

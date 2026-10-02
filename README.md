@@ -21,6 +21,8 @@ git clone <this repo> ~/src/ubuntu-hyprland-ii && cd ~/src/ubuntu-hyprland-ii
 ./setup.sh 95            # optional: keep GPU/CPU clocks up on AC so first launches aren't laggy (see "Responsiveness")
 ```
 
+Phases 90-95 are specific to a Lenovo Legion 7 16IRX9 (RTX 4070, MUX in dGPU mode): they check DMI against `HW_TESTED` in `config.env` and refuse to run elsewhere unless `HII_FORCE_HW=1`. Phase 00 only reports whether the machine matches.
+
 Phase 80 pins `packages/hyprland-only-keep.txt` (what the dots use from KDE/GNOME: Dolphin, the KDE file dialog, the network/Bluetooth/users KCMs, plasma-systemmonitor, Breeze, gnome-keyring, fprintd; plus sssd, printing, audio/network plumbing) as manually installed, then purges what `apt --auto-remove` computes around `packages/hyprland-only-roots.txt`. It shows the list first (and `EXPECT=<file>` aborts unless the list matches a reviewed one). It removes ~660 packages / 2.4 GB on a `kde-full` + `ubuntu-desktop` install; nothing is installed. The X server core stays (the NVIDIA driver package depends on it), and so does XWayland. Removed packages are listed in `~/src/hypr/apt-removed-hyprland-only-*.txt` for reinstalling; `/etc` changes are in etckeeper.
 
 Log out and pick **Hyprland (illogical-impulse)** in SDDM. Phases can be re-run: the build is resumable (stamps in `~/src/hypr/.stamps`); to rebuild one component, delete its stamp and run `phases/30-build.sh <component>`.
@@ -65,7 +67,7 @@ Found the hard way (about ten hard reboots); don't undo these without testing wi
 - **s2idle, not S3 "deep".** After S3 the NVIDIA driver never re-lights the eDP panel (black even on the text console). Phase 91 puts `mem_sleep_default=s2idle` on the Limine command line.
 - **NVIDIA suspends from the kernel** (`NVreg_UseKernelSuspendNotifiers=1`, runtime D3 off) and the `nvidia-suspend/resume/hibernate` systemd services are masked: their `chvt 63` dance froze the whole machine on resume (phase 90).
 - **Hibernate** uses a 32 GB `/swap.img` with `resume=UUID=... resume_offset=...` on the command line (phases 90/91). Wake it with the power button; the RTC alarm cannot wake from S4 here.
-- **The machine boots Limine from the ESP, not GRUB** (phase 92 removes GRUB). Phase 91 installs `limine-esp-sync` (kernel postinst and `update-initramfs` hooks) so the ESP copy of the kernel/initrd follows `/boot`; the previous kernel stays as the second menu entry, without the EDID pin.
+- **The machine boots Limine from the ESP, not GRUB** (phase 92 removes GRUB, after checking that Limine can boot on its own: EFI entry, ESP kernel/initrd = newest `/boot` kernel, `limine.conf` has the resume/s2idle/EDID args; it asks before purging). Phase 91 installs `limine-esp-sync` (kernel postinst and `update-initramfs` hooks) so the ESP copy of the kernel/initrd follows `/boot`; the previous kernel stays as the second menu entry, without the EDID pin.
 - Phase 93 pins the panel EDID (`drm.edid_firmware`): it stops a retry loop after resume, but it was not what fixed sleep.
 
 ## Responsiveness (phase 95)
@@ -75,14 +77,16 @@ Symptom: after some time in one app, the first new window (e.g. a terminal after
 - **On AC:** GPU graphics clock floor 1200 MHz (max unchanged; idle draw ~6 W vs ~4 W), power profile `performance`, CPU governor `performance` (Isaac Sim warns about a `powersave` governor even though `intel_pstate` + EPP `performance` is equivalent), and `nvidia-persistenced` is pulled in.
 - **On battery:** floor released, `balanced`, governor `powersave`.
 
+`maintenance/power-report.sh` prints a snapshot (AC, profile, governor/EPP, GPU P-state/clocks/draw, battery rate averaged over `SECS`, default 10 s). Run it idle once on AC and once on battery to compare. On AC with phase 95: `performance` profile/governor/EPP, GPU at P5 with gr 1200 MHz, ~6 W idle GPU draw. (`nvidia-smi` shows persistence mode "Disabled": Ubuntu's `nvidia-persistenced` runs with `--no-persistence-mode`, which still keeps the driver initialized; that is what matters here.)
+
 Isaac Sim's "IOMMU is enabled" warning is Ubuntu's default and was left alone (turning it off needs a kernel command line change).
 
 ## Known issues
 
-- **Switching to a text console (Ctrl+Alt+F*n*) inside Hyprland** crashed it (segfault at address 0 in aquamarine when the seat is disabled). `patches/aquamarine-drm-teardown-fixes.patch` targets this but is not confirmed yet; until it is, log out instead. If it still crashes: `journalctl -k -b | grep segfault`, then `llvm-addr2line-20 -f -C -i -e ~/.local/opt/hyprland/lib/libaquamarine.so.0.15.1 0x<offset>` with the offset from the `[...]` part.
-- **ydotool** is a shim over `wtype` (`session-bin/ydotool`): real ydotool needs `/dev/uinput`, i.e. permission for any of your programs to type into every session; wtype uses Hyprland's virtual-keyboard protocol and only reaches Hyprland windows. It covers clipboard auto-paste and the on-screen keyboard (US key table); mouse commands aren't supported.
-- `maintenance/repair-etckeeper.sh`: one-off repair for a corrupt `/etc/.git` (backs it up to `/root` first).
-- The session wrapper's NVIDIA variables assume a dGPU-only (MUX) laptop or a desktop; review them on hybrid graphics.
+- **ydotool** is a shim over `wtype` (`session-bin/ydotool`): real ydotool needs `/dev/uinput`, i.e. permission for any of your programs to type into every session; wtype uses Hyprland's virtual-keyboard protocol and only reaches Hyprland windows. It covers `key` and `type`, which is all the dots use (clipboard auto-paste, the on-screen keyboard; US key table). Mouse commands aren't implemented; nothing in the dots (or upstream at the pinned commit) uses them.
+- `maintenance/repair-etckeeper.sh`: one-off repair for a corrupt `/etc/.git` (apt prints `fatal: bad object HEAD`, `object file ... is empty` or `index file corrupt`, usually after a crash or power loss during an apt run). It refuses to run if `git fsck` finds nothing wrong, and backs `/etc/.git` up to `/root` first.
+- The session wrapper picks the GPU at login from `/sys/class/drm`: NVIDIA variables (`GBM_BACKEND`, `__GLX_VENDOR_LIBRARY_NAME`, `LIBVA_DRIVER_NAME`, `NVD_BACKEND`) only when the NVIDIA card drives the built-in panel (or the connected outputs); with several GPUs, `AQ_DRM_DEVICES` lists the display GPU first. What it picked is in `~/.local/share/sddm/wayland-session.log`. Tested on dGPU-only (MUX) only; the Optimus logic is untested on hardware.
+- Switching to a text console (Ctrl+Alt+F*n*) inside Hyprland used to crash it (segfault in aquamarine when the seat is disabled); fixed by `patches/aquamarine-drm-teardown-fixes.patch` (confirmed 2026-10-02: tty1 <-> tty3 and back). If it ever returns: `journalctl -k -b | grep segfault`, then `llvm-addr2line-20 -f -C -i -e ~/.local/opt/hyprland/lib/libaquamarine.so.0.15.1 0x<offset>` with the offset from the `[...]` part.
 
 ## Rollback
 
@@ -112,4 +116,30 @@ Config backups from phase 15 are in `~/backups/config-*/`.
 
 Rebuilding while logged in to Hyprland is safe: meson/cmake components install via a staging dir and replace files with new inodes, so the running session keeps its old copies until you log in again.
 
-Bump a tag in `phases/30-build.sh` (or `QT_VER`/`DOTS_COMMIT` in `config.env`), delete the component's source dir and stamp in `~/src/hypr`, and re-run that component. Check that the patches still apply; upstream may have changed the patched lines.
+### The Hyprland build
+
+Bump with `maintenance/bump.sh <component> [new-tag]` (e.g. `maintenance/bump.sh hyprland v0.56.3`; a source dir name like `Hyprland` works too). It checks that `patches/` still apply to the new tag (a proposed tag or commit is checked out even for components without patches, so a typo fails before anything is deleted), shows the tag edit to `phases/30-build.sh` and the stamp/source dir in `~/src/hypr` it will delete, asks once, and rebuilds that component. Leave out the tag to just rebuild from a clean source dir. `--dry-run` runs the patch check and shows the plan without changing anything. Components that depend on a bumped library are not rebuilt automatically. `QT_VER`/`DOTS_COMMIT` in `config.env` are still edited by hand.
+
+`./setup.sh --check-patches` checks every patch against its pinned tag; `./setup.sh --check-patches hyprland=v0.57.0 aquamarine=v0.16.0` checks a proposed bump. It works in temporary checkouts and never modifies the trees in `~/src/hypr`. The build applies patches from the same list (`lib/patches.sh`).
+
+### The dots
+
+- `maintenance/diff-dots.sh` lists what differs between `~/.config/{hypr,quickshell,fuzzel,matugen,wlogout,fish,xdg-desktop-portal,foot}` and the pinned dots (`DOTS_COMMIT`); `-p` shows the diffs, paths filter (`diff-dots.sh -p hypr/custom`). Before bumping `DOTS_COMMIT`, `diff-dots.sh --against origin/main` lists the files the bump changes and flags those you changed too (C), with whether they merge cleanly. Read-only; upstream trees are cached in `~/src/hypr/dots-pinned`.
+- Templates (fresh installs): phase 50 fills `~/.config/hypr/custom/*.lua` from `templates/hypr-custom/` only where the file is blank or missing, and applies `templates/illogical-impulse-config.json` (foot for the terminal/update/password actions, `maintenance/update.sh` instead of pacman, foot/VS Code pinned) to the shell's `config.json`, only to keys still at the dots' kitty/pacman default.
+
+### The system (apt)
+
+`maintenance/update.sh` wraps `apt full-upgrade`:
+
+```bash
+maintenance/update.sh --check     # what would change; no root, no changes (exit 2 = blockers)
+maintenance/update.sh             # check, confirm, snapshot, upgrade, verify
+maintenance/update.sh --post      # verify only, e.g. after unattended-upgrades (before rebooting)
+```
+
+- **Before:** the plan is grouped into kernel/boot chain, NVIDIA, session plumbing, and the system libraries the `~/.local/opt/hyprland` build links against (found with `ldd` over every ELF there, cached in `~/src/hypr/update/`), with the components that use them. Removals and anything in `PROTECTED_PACKAGES` are refused (`--allow-removals`, `--allow-protected`).
+- **Snapshot:** `~/src/hypr/update/<timestamp>/` keeps all installed versions, holds, the plan and a `downgrade.sh` with the exact old versions (`downgrade-availability.txt` says which ones can still be downloaded); `/etc` is committed to etckeeper before and after.
+- **After:** (a) every ELF under the prefix still resolves its libraries (Qt's optional plugins that never resolved are a recorded baseline; `--rebaseline` accepts the current state); (b) the newest kernel has an NVIDIA module matching the userspace driver and an initrd, the Limine ESP copy is that kernel, the fallback `vmlinuz.old` still has its modules, and `limine.conf` still has `s2idle`/`resume=`; if any of this fails it prints **DO NOT REBOOT** with the fix; (c) the protected state is unchanged; (d) the phase 90/95 settings survived; (e) which prefix components link against upgraded libraries. Library updates within 24.04 keep the ABI: log out and back in. Rebuild a component (`maintenance/bump.sh <component>`) only if (a) fails or it misbehaves.
+- After an NVIDIA driver upgrade, **reboot** rather than logging out: until then the new userspace libraries don't match the loaded kernel module.
+
+**unattended-upgrades** is on by default and installs from `noble-security`, which includes kernels and NVIDIA drivers. `maintenance/update.sh --unattended` shows what it may do and prints a proposed blacklist (`/etc/apt/apt.conf.d/51hyprland-ii-unattended`) that leaves kernel, NVIDIA, GRUB/shim and the Fleet agent to `update.sh`. Either way, run `update.sh --post` after it has installed something.

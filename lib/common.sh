@@ -16,6 +16,18 @@ confirm(){ # confirm "question" -> returns 0 on y/Y; ASSUME_YES=1 skips the prom
   local a; read -r -p "$1 [y/N] " a; [[ "$a" =~ ^[yY]$ ]]
 }
 
+# Hardware guard for machine-specific phases (90+). Compares DMI "vendor|product|version" against HW_TESTED (config.env).
+# Dies on mismatch unless HII_FORCE_HW=1: a separate opt-in, because ASSUME_YES must not silently write another laptop's
+# bootloader/kernel cmdline/EDID. `require_hw report` only prints the result (phase 00).
+hw_id(){ local f; for f in sys_vendor product_name product_version; do cat "/sys/class/dmi/id/$f" 2>/dev/null || echo '?'; done | paste -sd'|'; }
+require_hw(){
+  local id t tested; id=$(hw_id); IFS=';' read -ra tested <<<"$HW_TESTED"
+  for t in "${tested[@]}"; do [ "$id" = "$t" ] && { [ "${1:-}" != report ] || ok "Hardware matches HW_TESTED: $id"; return 0; }; done
+  [ "${1:-}" = report ] && { warn "Hardware not tested: found '$id', tested '$HW_TESTED'. Phases 90-95 will refuse unless HII_FORCE_HW=1."; return 0; }
+  [ "${HII_FORCE_HW:-0}" = 1 ] && { warn "Hardware '$id' != tested '$HW_TESTED'; continuing (HII_FORCE_HW=1)."; return 0; }
+  die "This phase is specific to '$HW_TESTED' (DMI vendor|product|version); this machine is '$id'. Review it, then rerun with HII_FORCE_HW=1."
+}
+
 [ "$(id -u)" -ne 0 ] || die "Run as your normal user; phases call sudo themselves where needed."
 
 # apt install that refuses to upgrade or remove anything already installed (dry run first).

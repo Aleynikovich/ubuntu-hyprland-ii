@@ -4,6 +4,7 @@
 # Run phase 91 afterwards: it puts resume=/resume_offset= (derived from the swap file) on the Limine cmdline.
 set -euo pipefail
 source "$(dirname "$0")/../lib/common.sh"
+require_hw
 
 SWAP_FILE=/swap.img
 SWAP_GB="${SWAP_GB:-32}"   # must hold the used RAM (+ the compressed image); Isaac Sim can use a lot

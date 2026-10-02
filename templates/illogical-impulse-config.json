@@ -1,0 +1,20 @@
+{
+    "apps": {
+        "changePassword": "foot --hold fish -i -c 'passwd'",
+        "terminal": "foot",
+        "update": "foot --hold @REPO@/maintenance/update.sh"
+    },
+    "dock": {
+        "pinnedApps": [
+            "org.kde.dolphin",
+            "foot"
+        ]
+    },
+    "launcher": {
+        "pinnedApps": [
+            "org.kde.dolphin",
+            "foot",
+            "code"
+        ]
+    }
+}

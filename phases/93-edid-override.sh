@@ -6,6 +6,7 @@
 #   re-run phase 91 after removing EDID_ARG there (or restore /boot/efi/limine.conf.bak).
 set -euo pipefail
 source "$(dirname "$0")/../lib/common.sh"
+require_hw
 
 CONN=$(ls -d /sys/class/drm/card*-eDP-1 2>/dev/null | head -1)
 [ -n "$CONN" ] || die "No eDP-1 connector."

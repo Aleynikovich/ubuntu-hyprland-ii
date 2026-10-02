@@ -24,11 +24,6 @@ git -C "$DOTS" checkout -q "$DOTS_COMMIT"
 git -C "$DOTS" submodule update -q --init --recursive
 
 touch "$LOG"
-# Terminal: foot (see ~/.config/foot/foot.ini); text editor: VS Code (the dots try kate first). custom/variables.lua is the dots' override file and survives updates.
-if [ ! -s ~/.config/hypr/custom/variables.lua ]; then
-  mkdir -p ~/.config/hypr/custom
-  printf -- '-- Personal overrides (loaded after hyprland/variables.lua; survives dots updates)\nterminal = "foot"\ntextEditor = "code"\n' > ~/.config/hypr/custom/variables.lua
-fi
 for d in "${COPY[@]}"; do
   if [ -e "$HOME/.config/$d" ]; then echo "skip (exists): ~/.config/$d"; continue; fi
   rsync -a "$DOTS/dots/.config/$d/" "$HOME/.config/$d/"
@@ -36,6 +31,14 @@ for d in "${COPY[@]}"; do
 done
 mkdir -p ~/.local/share/icons
 [ -e ~/.local/share/icons/illogical-impulse.svg ] || cp "$DOTS/dots/.local/share/icons/illogical-impulse.svg" ~/.local/share/icons/
+# templates/hypr-custom/*.lua -> ~/.config/hypr/custom/ (the dots' override files; they survive dots updates). Upstream ships
+# them blank (one newline), so only blank or missing ones are filled. variables.lua: terminal foot, text editor VS Code (the dots try kate first).
+# After the copy loop: creating ~/.config/hypr first would make it skip the hypr dots.
+mkdir -p ~/.config/hypr/custom
+for t in "$REPO"/templates/hypr-custom/*; do
+  f=~/.config/hypr/custom/$(basename "$t")
+  if [ -f "$f" ] && grep -q '[^[:space:]]' "$f"; then echo "skip (not empty): $f"; else install -m644 "$t" "$f"; echo "installed: $f"; fi
+done
 
 # hyprlock fallback: Ubuntu has no /etc/pam.d/hyprlock (PAM would fall back to "deny all"). Use the login policy,
 # the same one Quickshell's lock screen uses, instead of adding a file to /etc.
@@ -51,11 +54,23 @@ if [ -f ~/.config/foot/foot.ini ] && ! cmp -s "$REPO/templates/foot.ini" ~/.conf
 fi
 install -m644 "$REPO/templates/foot.ini" ~/.config/foot/foot.ini
 sed -i 's/^term_alpha=100/term_alpha=88/' ~/.config/quickshell/ii/scripts/colors/applycolor.sh   # wallpaper theming keeps the terminal translucent
+# The shell's config.json: templates/illogical-impulse-config.json holds the keys we set (terminal/update/password actions via
+# foot, "update" runs maintenance/update.sh instead of pacman; foot + VS Code pinned instead of kitty/cmake-gui). A key is only set while
+# config.json still has the dots' kitty/pacman default (or lacks it), so anything changed later in the shell's settings is kept.
 CJ=~/.config/illogical-impulse/config.json   # exists after the shell's first run; skipped (with a note) otherwise
-if [ -f "$CJ" ]; then
-  sed -i 's/kitty -1 --hold=\?[a-z]* \?/foot --hold /; s/"terminal": "kitty -1"/"terminal": "foot"/; s/"kitty"/"foot"/' "$CJ"
-else
+if [ ! -f "$CJ" ]; then
   warn "no $CJ yet: start the shell once, then re-run phase 50 to point its terminal actions at foot"
+elif ! command -v jq >/dev/null; then
+  warn "jq not installed: $CJ left as is (apply templates/illogical-impulse-config.json by hand)"
+else
+  # @REPO@ in the template = this checkout; an earlier template's plain "apt upgrade" update action is replaced too
+  jq --indent 4 --arg repo "$REPO" --slurpfile ov "$REPO/templates/illogical-impulse-config.json" '
+    ($ov[0] | walk(if type == "string" then gsub("@REPO@"; $repo) else . end)) as $o |
+    reduce ($o | paths(type != "object") | select(map(type) | index("number") | not)) as $p (.;
+      if (getpath($p) | . == null or (tojson | test("kitty|pacman|apt upgrade"))) then setpath($p; $o | getpath($p)) else . end)
+  ' "$CJ" > "$CJ.tmp" || { rm -f "$CJ.tmp"; die "Cannot parse $CJ (shell mid-write?); re-run phase 50."; }
+  # Only replace the file when a value changed (jq reformats empty arrays; a rewrite makes the running shell reload).
+  if jq -e --slurpfile new "$CJ.tmp" '. == $new[0]' "$CJ" >/dev/null; then rm "$CJ.tmp"; else mv "$CJ.tmp" "$CJ"; echo "updated: $CJ"; fi
 fi
 
 step "Session wrapper + shims -> $P/session-bin"

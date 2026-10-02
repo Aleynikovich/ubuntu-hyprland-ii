@@ -7,6 +7,7 @@
 # Rollback: sudo systemctl disable --now gpu-warm.service; sudo systemctl stop nvidia-persistenced; sudo rm /etc/systemd/system/gpu-warm.service /etc/udev/rules.d/99-gpu-warm.rules /usr/local/sbin/gpu-warm; sudo nvidia-smi -rgc
 set -euo pipefail
 source "$(dirname "$0")/../lib/common.sh"
+require_hw
 MIN="${GPU_MIN_MHZ:-1200}"
 
 step "gpu-warm script"
