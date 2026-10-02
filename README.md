@@ -6,6 +6,10 @@ The upstream installer is Arch-first, and on Ubuntu it only offers an experiment
 
 Tested 2026-10-02: Kubuntu 24.04.5, Plasma 5.27 X11, SDDM, Lenovo Legion 7 16IRX9 with an RTX 4070 (dGPU-only/MUX mode, driver 595, `nvidia_drm modeset=1`). Isaac Sim runs in both sessions.
 
+![The desktop: kitty with the time-of-day ASCII sunrise greeting, btop, eza, bat and a GPU monitor](docs/screenshots/desktop.jpg)
+
+The terminal greeting is `templates/kitty-fetch`: an ASCII sun over a horizon (fastfetch beside it) that rises in about half a second and sits higher or lower, and warmer or paler, depending on the time of day.
+
 ## Quick start
 
 ```bash
