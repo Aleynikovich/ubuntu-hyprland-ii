@@ -41,7 +41,7 @@ Not touched: Plasma configs (`kdeglobals`, `dolphinrc`, `konsolerc`, `kitty`, `f
 ## Ubuntu-specific workarounds
 
 - **Compiler:** Hyprland 0.56 uses C++26 `#embed`; built with `clang-20` from Ubuntu updates against the system libstdc++ 14.
-- **`patches/`:** libstdc++ 14 lacks a few C++23/26 library bits (`vector::append_range`, `string + string_view`, `ranges::starts_with`), and clang-20 + libstdc++ 14 trips on `range | std::ranges::to<T>()`. The patches swap these for equivalent C++20 code (17 one-line changes). hyprsunset's patch keeps its systemd unit inside `PREFIX`.
+- **`patches/`:** libstdc++ 14 lacks a few C++23/26 library bits (`vector::append_range`, `string + string_view`, `ranges::starts_with`), and clang-20 + libstdc++ 14 trips on `range | std::ranges::to<T>()`. The patches swap these for equivalent C++20 code (17 one-line changes). hyprsunset's patch keeps its systemd unit inside `PREFIX`. aquamarine's patch backports three DRM teardown fixes from upstream main (after 0.15.1, DRM.cpp only, no ABI change) plus the same null-connector guard on the VT switch-away path; aquamarine is built with debug info so DRM/session crashes resolve to a source line.
 - **Built because noble lacks or has too-old versions:** wayland 1.26, wayland-protocols 1.49, libinput 1.32, xkbcommon 1.13, libdisplay-info 0.4, libei 1.6, Lua 5.5, xcb-util-errors, readline (no ncurses-dev needed), PipeWire 1.2 client lib (xdph needs ≥ 1.1.82), sdbus-c++ 2, cpptrace with libunwind.
 - **Plasma 5 vs the dots' KDE 6 expectations:** `session-bin/kcmshell6` forwards to `kcmshell5`.
 - **ImageMagick 6:** `session-bin/magick` maps IM7-style calls to IM6 tools.
@@ -52,7 +52,7 @@ Not touched: Plasma configs (`kdeglobals`, `dolphinrc`, `konsolerc`, `kitty`, `f
 
 ## Known issues
 
-- **Don't switch to a text console (Ctrl+Alt+F*n*) inside Hyprland**: aquamarine segfaults when the seat is disabled. Log out instead.
+- **Switching to a text console (Ctrl+Alt+F*n*) inside Hyprland** crashed it (segfault at address 0 in aquamarine when the seat is disabled). `patches/aquamarine-drm-teardown-fixes.patch` targets this but is not confirmed yet; until it is, log out instead. If it still crashes: `journalctl -k -b | grep segfault`, then `llvm-addr2line-20 -f -C -i -e ~/.local/opt/hyprland/lib/libaquamarine.so.0.15.1 0x<offset>` with the offset from the `[...]` part.
 - Not set up: `ydotool` and `ddcutil` (need the `input`/`i2c` groups), `swappy`, `songrec`, EasyEffects.
 - The session wrapper's NVIDIA variables assume a dGPU-only (MUX) laptop or a desktop; review them on hybrid graphics.
 
@@ -81,5 +81,7 @@ Config backups from phase 15 are in `~/backups/config-*/`.
 4. Arch/AUR-only things: an Arch [distrobox](https://distrobox.it) container, with apps exported to the host launcher.
 
 ## Updating
+
+Rebuilding while logged in to Hyprland is safe: meson/cmake components install via a staging dir and replace files with new inodes, so the running session keeps its old copies until you log in again.
 
 Bump a tag in `phases/30-build.sh` (or `QT_VER`/`DOTS_COMMIT` in `config.env`), delete the component's source dir and stamp in `~/src/hypr`, and re-run that component. Check that the patches still apply; upstream may have changed the patched lines.

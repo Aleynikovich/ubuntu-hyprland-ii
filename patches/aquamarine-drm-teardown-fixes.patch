@@ -1,0 +1,42 @@
+diff --git a/src/backend/drm/DRM.cpp b/src/backend/drm/DRM.cpp
+index 431247b..ede1d51 100644
+--- a/src/backend/drm/DRM.cpp
++++ b/src/backend/drm/DRM.cpp
+@@ -68,6 +68,8 @@ Aquamarine::CDRMBackend::CDRMBackend(SP<CBackend> backend_) : backend(backend_)
+             restoreAfterVT();
+         } else
+             for (const auto& connector : connectors) {
++                if (!connector) // same null guard as upstream fc77bd5, on the VT switch-away path
++                    continue;
+                 if (connector->output)
+                     cancelAsyncOutput(connector->output.get(), true);
+                 connector->invalidateFrame();
+@@ -497,7 +499,7 @@ void Aquamarine::CDRMBackend::emitAsyncCommitEvent(SP<CDRMOutput> output) {
+ 
+ void Aquamarine::CDRMBackend::flushAsyncCommitEvents() {
+     for (const auto& connector : connectors) {
+-        if (connector->output && connector->output->asyncCommitEventPending)
++        if (connector && connector->output && connector->output->asyncCommitEventPending)
+             emitAsyncCommitEvent(connector->output);
+     }
+ }
+@@ -586,7 +588,8 @@ void Aquamarine::CDRMBackend::dispatchCommitResults() {
+ }
+ 
+ void Aquamarine::CDRMBackend::log(eBackendLogLevel l, const std::string& s) {
+-    backend->log(l, s);
++    if (backend)
++        backend->log(l, s);
+ }
+ 
+ bool Aquamarine::CDRMBackend::sessionActive() {
+@@ -2107,6 +2110,9 @@ void Aquamarine::SDRMConnector::connect(drmModeConnector* connector) {
+ 
+     recheckCRTCProps();
+ 
++    // invalidate any stale state
++    invalidateFrame();
++
+     if (!backend->backend->ready)
+         return;
+ 

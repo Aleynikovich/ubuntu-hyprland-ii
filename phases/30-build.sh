@@ -57,8 +57,11 @@ git_commit(){ # url commit dir
 fetch(){ # url -> $SRC/dl/<basename>
   [ -f "$SRC/dl/$(basename "$1")" ] || wget -q -O "$SRC/dl/$(basename "$1")" "$1"
 }
-meson_build(){ rm -rf build; meson setup build "${MESON[@]}" "$@"; ninja -C build -j$JOBS; ninja -C build install; }
-cmake_build(){ rm -rf build; cmake -B build "${CMAKE[@]}" "$@"; cmake --build build -j$JOBS; cmake --install build; }
+# meson/cmake install overwrite files in place, which corrupts a library a running Hyprland session has mapped.
+# Install into a staging dir, then replace each file with a new inode (running processes keep the old copy).
+staged_install(){ local st=$SRC/stage; rm -rf "$st"; DESTDIR=$st "$@"; cp -a --remove-destination "$st$P/." "$P/"; rm -rf "$st"; }
+meson_build(){ rm -rf build; meson setup build "${MESON[@]}" "$@"; ninja -C build -j$JOBS; staged_install meson install -C build; }
+cmake_build(){ rm -rf build; cmake -B build "${CMAKE[@]}" "$@"; cmake --build build -j$JOBS; staged_install cmake --install build; }
 auto_build(){ NOCONFIGURE=1 autoreconf -fi; ./configure --prefix="$P" "$@"; make -j$JOBS; make install; }
 
 # ---------------- components ----------------
@@ -125,7 +128,8 @@ c_hyprland_protocols(){ git_src https://github.com/hyprwm/hyprland-protocols v0.
 c_hyprcursor(){ git_src https://github.com/hyprwm/hyprcursor v0.1.13 hyprcursor; cmake_build "${CLANG[@]}"; }
 c_hyprgraphics(){ git_src https://github.com/hyprwm/hyprgraphics v0.5.1 hyprgraphics; cmake_build "${CLANG[@]}"; }
 c_hyprwire(){ git_src https://github.com/hyprwm/hyprwire v0.3.1 hyprwire; cmake_build "${CLANG[@]}"; }
-c_aquamarine(){ git_src https://github.com/hyprwm/aquamarine v0.15.1 aquamarine; cmake_build "${CLANG[@]}"; }
+# Debug info: aquamarine is where Hyprland's DRM/session crashes land (e.g. the VT-switch segfault); keeps them resolvable.
+c_aquamarine(){ git_src https://github.com/hyprwm/aquamarine v0.15.1 aquamarine; cmake_build "${CLANG[@]}" -DCMAKE_BUILD_TYPE=RelWithDebInfo; }
 c_hyprland(){ git_src https://github.com/hyprwm/Hyprland v0.56.2 Hyprland
   cmake_build "${CLANG[@]}" -DNO_TESTS=ON -DBUILD_TESTING=OFF; }
 # Qt 6.10 + KDE bits for the illogical-impulse Quickshell config
