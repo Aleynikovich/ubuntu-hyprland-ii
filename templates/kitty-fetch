@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+"""Fastfetch with the Sunrise Robotics logo (coral sun + two strokes) as a short sunrise animation instead of the distro logo.
+Smooth anti-aliased frames drawn with numpy/PIL and shown through kitty's graphics protocol; ~1.5s, any keypress skips to the
+finished logo. Falls back to plain fastfetch anywhere that isn't kitty."""
+import base64, fcntl, io, os, select, struct, subprocess, sys, termios, time, tty
+
+def plain():
+    os.execvp("fastfetch", ["fastfetch", "--logo", "small", *sys.argv[1:]])
+
+if not (sys.stdout.isatty() and sys.stdin.isatty() and os.environ.get("KITTY_WINDOW_ID")):
+    plain()
+try:
+    import numpy as np
+    from PIL import Image
+except ImportError:
+    plain()
+
+FRAMES = 30            # ~1.5s at 20fps
+PX = 240               # frame size in pixels
+ROWS = 13              # logo height in terminal rows
+CORAL = np.array([255, 92, 63], float)
+WHITE = np.array([255, 255, 255], float)
+
+# Logo geometry in a 200x200 box: the sun, and two strokes (coral outside the sun, white where they cross it)
+SUN = (100.0, 100.0, 38.0)
+BARS = [(42, 106, 103, 111, -1),    # (x0, x1, y0, y1, slide-in side): left stroke
+        (94, 158, 91, 99, +1)]      # right stroke
+
+S = PX / 200
+Y, X = (np.mgrid[0:PX, 0:PX] + 0.5) / S      # pixel centres in logo units
+
+def cover(d):                                 # signed distance (logo units) -> anti-aliased coverage
+    return np.clip(0.5 - d * S, 0, 1)
+
+def ease(t):
+    return 1 - (1 - t) ** 3
+
+def frame(p):
+    rise = ease(min(1, p / 0.7))
+    slide = ease(max(0, (p - 0.2) / 0.8))
+    cx, cy, r = SUN
+    cy += (1 - rise) * 70                     # the sun climbs up into place
+    sun = cover(np.hypot(X - cx, Y - cy) - r)
+    shade = 0.10 * np.clip(1 - (Y - (cy - r)) / (2 * r), 0, 1)           # a little lighter at the top
+    rgb = (CORAL + (255 - CORAL) * shade[..., None]) * np.ones((PX, PX, 3))
+    alpha = sun
+    for x0, x1, y0, y1, side in BARS:
+        off = (1 - slide) * 60 * side         # strokes glide in from their own side
+        dx = np.maximum(x0 + off - X, X - (x1 + off)); dy = np.maximum(y0 - Y, Y - y1)
+        bar = cover(np.maximum(dx, dy)) * min(1, slide * 3)
+        col = WHITE * sun[..., None] + CORAL * (1 - sun[..., None])      # white over the sun, coral outside it
+        rgb = rgb * (1 - bar[..., None]) + col * bar[..., None]
+        alpha = bar + alpha * (1 - bar)
+    out = np.dstack([rgb, alpha * 255]).astype(np.uint8)
+    buf = io.BytesIO(); Image.fromarray(out, "RGBA").save(buf, "PNG", compress_level=1)
+    return base64.standard_b64encode(buf.getvalue()).decode()
+
+def cell_aspect():
+    try:
+        rows, cols, xp, yp = struct.unpack("HHHH", fcntl.ioctl(1, termios.TIOCGWINSZ, b"\0" * 8))
+        return (yp / rows) / (xp / cols)
+    except Exception:
+        return 2.0
+COLS = round(ROWS * cell_aspect())
+
+def show(b64):                                # transmit + place image 1 at the cursor (same id replaces the previous frame)
+    chunks = [b64[i:i + 4096] for i in range(0, len(b64), 4096)]
+    out = []
+    for n, c in enumerate(chunks):
+        head = f"a=T,f=100,i=1,c={COLS},r={ROWS},C=1,q=2," if n == 0 else ""
+        out.append(f"\x1b_G{head}m={int(n < len(chunks) - 1)};{c}\x1b\\")
+    sys.stdout.write("".join(out))
+
+info = subprocess.run(["fastfetch", "--logo", "none", "--pipe", "false", *sys.argv[1:]],
+                      capture_output=True, text=True).stdout.rstrip("\n").split("\n")
+n = max(ROWS, len(info))
+top = (n - len(info)) // 2                    # centre the text beside the logo
+pad = " " * (COLS + 2)
+text = "\n".join(pad + (info[i - top] if 0 <= i - top < len(info) else "") for i in range(n))
+
+fd = sys.stdin.fileno()
+old = termios.tcgetattr(fd)
+sys.stdout.write("\x1b[?25l" + text)          # text first, so the screen scrolls before the image is anchored
+try:
+    tty.setcbreak(fd)
+    for i in range(FRAMES + 1):
+        sys.stdout.write("\x1b[%dA\r" % (n - 1) if n > 1 else "\r")
+        show(frame(i / FRAMES))
+        sys.stdout.write("\x1b[%dB" % (n - 1) if n > 1 else "")
+        sys.stdout.flush()
+        if i < FRAMES and select.select([fd], [], [], 0.03)[0]:       # keypress: jump to the finished logo
+            sys.stdout.write("\x1b[%dA\r" % (n - 1) if n > 1 else "\r"); show(frame(1))
+            sys.stdout.write("\x1b[%dB" % (n - 1) if n > 1 else ""); break
+    sys.stdout.write("\n")
+finally:
+    termios.tcsetattr(fd, termios.TCSADRAIN, old)
+    sys.stdout.write("\x1b[?25h")

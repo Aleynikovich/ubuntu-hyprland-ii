@@ -28,5 +28,9 @@ end
 
 # One compact fastfetch per new terminal window (delete this block for a silent start)
 function fish_greeting
-    command -q fastfetch; and fastfetch --logo small --structure Title:OS:Kernel:Shell:CPU:GPU:Memory
+    if test -n "$KITTY_WINDOW_ID"; and test -x ~/.local/bin/kitty-fetch
+        ~/.local/bin/kitty-fetch --structure Title:OS:Kernel:CPU:GPU:Memory
+    else
+        command -q fastfetch; and fastfetch --logo small --structure Title:OS:Kernel:CPU:GPU:Memory
+    end
 end
