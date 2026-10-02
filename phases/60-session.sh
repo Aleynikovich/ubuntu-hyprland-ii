@@ -27,4 +27,4 @@ if [ -x "$PREFIX/opt/MicroTeX/LaTeX" ] && [ "$(readlink /opt/MicroTeX)" != "$PRE
   sudo ln -sfn "$PREFIX/opt/MicroTeX" /opt/MicroTeX && ls -l /opt/MicroTeX
 fi
 ls /usr/share/xsessions/ /usr/share/wayland-sessions/
-ok "Log out and pick \"Hyprland (illogical-impulse)\" in SDDM. Avoid Ctrl+Alt+Fn VT switches inside Hyprland (known crash)."
+ok "Log out and pick \"Hyprland (illogical-impulse)\" in SDDM (or set up autologin with phase 80)."
