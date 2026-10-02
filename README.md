@@ -1,6 +1,6 @@
 # ubuntu-hyprland-ii
 
-Hyprland 0.56 with [end-4/dots-hyprland](https://github.com/end-4/dots-hyprland) ("illogical-impulse") as an **extra login session** on Kubuntu 24.04, next to an untouched Plasma X11 session.
+Hyprland 0.56 with [end-4/dots-hyprland](https://github.com/end-4/dots-hyprland) ("illogical-impulse") as an **extra login session** on Kubuntu 24.04, next to an untouched Plasma X11 session. Optionally (phase 80), Hyprland becomes the **only** desktop: Plasma, GNOME and the X11 sessions are removed and SDDM logs straight into Hyprland.
 
 The upstream installer is Arch-first, and on Ubuntu it only offers an experimental Nix route that doesn't match the current (Lua-config) dots. This repo builds everything from source into one folder in your home instead.
 
@@ -16,7 +16,10 @@ git clone <this repo> ~/src/ubuntu-hyprland-ii && cd ~/src/ubuntu-hyprland-ii
 ./setup.sh               # 00 15 20 30 40 50 60: backup, deps, build (~30-60 min), runtime, dots, login entry
 ./setup.sh 45            # optional: EasyEffects + ddcutil (apt) + songrec (author's PPA, key fingerprint checked)
 ./setup.sh 70            # optional: VS Code from Microsoft's apt repo
+./setup.sh 80            # optional, destructive: remove Plasma/KDE apps/GNOME/X11 sessions, autologin into Hyprland
 ```
+
+Phase 80 pins `packages/hyprland-only-keep.txt` (what the dots use from KDE/GNOME: Dolphin, the KDE file dialog, the network/Bluetooth/users KCMs, plasma-systemmonitor, Breeze, gnome-keyring, fprintd; plus sssd, printing, audio/network plumbing) as manually installed, then purges what `apt --auto-remove` computes around `packages/hyprland-only-roots.txt`. It shows the list first (and `EXPECT=<file>` aborts unless the list matches a reviewed one). It removes ~660 packages / 2.4 GB on a `kde-full` + `ubuntu-desktop` install; nothing is installed. The X server core stays (the NVIDIA driver package depends on it), and so does XWayland. Removed packages are listed in `~/src/hypr/apt-removed-hyprland-only-*.txt` for reinstalling; `/etc` changes are in etckeeper.
 
 Log out and pick **Hyprland (illogical-impulse)** in SDDM. Phases can be re-run: the build is resumable (stamps in `~/src/hypr/.stamps`); to rebuild one component, delete its stamp and run `phases/30-build.sh <component>`.
 
@@ -28,7 +31,7 @@ Log out and pick **Hyprland (illogical-impulse)** in SDDM. Phases can be re-run:
 | `~/src/hypr` (`SRC`) | sources, build trees, logs, lists of apt packages installed (for rollback) |
 | `~/.config/{hypr,quickshell,fuzzel,matugen,wlogout,fish,xdg-desktop-portal}` | dots: **only copied if the folder doesn't exist** |
 | `~/.local/share/{fonts/illogical-impulse,icons,themes}` | fonts, Bibata cursor, adw-gtk3 |
-| `/usr/share/wayland-sessions/hyprland-ii.desktop` | the only file written outside your home (besides apt packages) |
+| `/usr/share/wayland-sessions/hyprland-ii.desktop`, `/opt/MicroTeX` (link into `PREFIX`) | written outside your home (besides apt packages); phase 80 adds `/etc/sddm.conf.d/hyprland-ii-autologin.conf` |
 
 Not touched: Plasma configs (`kdeglobals`, `dolphinrc`, `konsolerc`, `kitty`, `fontconfig`, ...), user groups, `gsettings`, `/etc/pam.d`, the NVIDIA driver, anything in `config.env`'s `PROTECTED_UNITS` (fingerprinted before and checked after every run).
 

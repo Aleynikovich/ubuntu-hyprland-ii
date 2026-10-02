@@ -165,6 +165,9 @@ c_hypridle(){ git_src https://github.com/hyprwm/hypridle v0.1.8 hypridle; cmake_
 c_hyprlock(){ git_src https://github.com/hyprwm/hyprlock v0.9.6 hyprlock; cmake_build "${CLANG[@]}"; }
 c_hyprpicker(){ git_src https://github.com/hyprwm/hyprpicker v0.4.7 hyprpicker; cmake_build "${CLANG[@]}"; }
 c_hyprsunset(){ git_src https://github.com/hyprwm/hyprsunset v0.4.0 hyprsunset; cmake_build "${CLANG[@]}"; }
+c_microtex(){ git_commit https://github.com/end-4/MicroTeX 0e3707f microtex  # AI sidebar LaTeX; the commit end-4's Arch package uses
+  rm -rf build; cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release; cmake --build build -j$JOBS
+  rm -rf "$P/opt/MicroTeX"; install -Dm755 build/LaTeX "$P/opt/MicroTeX/LaTeX"; cp -r build/res "$P/opt/MicroTeX/"; }  # /opt/MicroTeX -> here: phase 60
 c_swappy(){ git_src https://github.com/jtheoof/swappy v1.8.0 swappy; meson_build -Dman-pages=disabled; }  # screenshot annotation (not in noble)
 c_qml_links(){ # expose private QML modules inside the private Qt, so no QML_IMPORT_PATH has to leak into the session
   local d
@@ -175,7 +178,7 @@ c_qml_links(){ # expose private QML modules inside the private Qt, so no QML_IMP
 ALL=(tools wayland wayland_protocols xkbcommon libinput lua util_macros xcb_proto xcb_errors
      hyprwayland_scanner hyprutils hyprlang hyprland_protocols hyprcursor hyprgraphics hyprwire libdisplay_info libei readline aquamarine hyprland
      qt ecm kirigami syntax_highlighting cpptrace quickshell hyprland_qt_support
-     sdbus pipewire xdph hypridle hyprlock hyprpicker hyprsunset swappy qml_links)
+     sdbus pipewire xdph hypridle hyprlock hyprpicker hyprsunset swappy microtex qml_links)
 
 run(){
   local c=$1
