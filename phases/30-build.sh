@@ -136,6 +136,9 @@ c_hyprland(){ git_src https://github.com/hyprwm/Hyprland v0.56.2 Hyprland
 c_qt(){
   "$P/tools/bin/aqt" install-qt linux desktop "$QT_VER" linux_gcc_64 -O "$P/qt" -m \
     qt5compat qtimageformats qtmultimedia qtpositioning qtquicktimeline qtsensors qtshadertools qtvirtualkeyboard
+  # ~1.2 GB of static libs only Qt's own tools/tests use (QML language server, QML DOM, debugger, test utils,
+  # bundled FFmpeg/spatial-audio internals); nothing built here links them. Re-run this component to restore.
+  rm -f "$QT"/lib/libQt6{QmlLS,QmlDom,QmlDebug,FFmpegMediaPluginImpl,BundledResonanceAudio,ExamplesAssetDownloader,QuickTestUtils}.a
 }
 c_ecm(){ git_src https://invent.kde.org/frameworks/extra-cmake-modules.git v6.30.0 ecm; cmake_build -DBUILD_TESTING=OFF -DBUILD_DOC=OFF; }
 c_kirigami(){ git_src https://invent.kde.org/frameworks/kirigami.git v6.30.0 kirigami
@@ -162,6 +165,7 @@ c_hypridle(){ git_src https://github.com/hyprwm/hypridle v0.1.8 hypridle; cmake_
 c_hyprlock(){ git_src https://github.com/hyprwm/hyprlock v0.9.6 hyprlock; cmake_build "${CLANG[@]}"; }
 c_hyprpicker(){ git_src https://github.com/hyprwm/hyprpicker v0.4.7 hyprpicker; cmake_build "${CLANG[@]}"; }
 c_hyprsunset(){ git_src https://github.com/hyprwm/hyprsunset v0.4.0 hyprsunset; cmake_build "${CLANG[@]}"; }
+c_swappy(){ git_src https://github.com/jtheoof/swappy v1.8.0 swappy; meson_build -Dman-pages=disabled; }  # screenshot annotation (not in noble)
 c_qml_links(){ # expose private QML modules inside the private Qt, so no QML_IMPORT_PATH has to leak into the session
   local d
   for d in "$P"/qml/*; do ln -sfn "$d" "$QT/qml/$(basename "$d")"; done
@@ -171,7 +175,7 @@ c_qml_links(){ # expose private QML modules inside the private Qt, so no QML_IMP
 ALL=(tools wayland wayland_protocols xkbcommon libinput lua util_macros xcb_proto xcb_errors
      hyprwayland_scanner hyprutils hyprlang hyprland_protocols hyprcursor hyprgraphics hyprwire libdisplay_info libei readline aquamarine hyprland
      qt ecm kirigami syntax_highlighting cpptrace quickshell hyprland_qt_support
-     sdbus pipewire xdph hypridle hyprlock hyprpicker hyprsunset qml_links)
+     sdbus pipewire xdph hypridle hyprlock hyprpicker hyprsunset swappy qml_links)
 
 run(){
   local c=$1

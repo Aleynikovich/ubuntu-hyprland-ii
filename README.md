@@ -14,7 +14,7 @@ git clone <this repo> ~/src/ubuntu-hyprland-ii && cd ~/src/ubuntu-hyprland-ii
 ./setup.sh 00            # read-only preflight
 ./setup.sh 10            # optional: remove all snaps + pin snapd (asks first, backs up ~/snap)
 ./setup.sh               # 00 15 20 30 40 50 60: backup, deps, build (~30-60 min), runtime, dots, login entry
-./setup.sh 45            # optional: EasyEffects (apt) + songrec (author's PPA, key fingerprint checked)
+./setup.sh 45            # optional: EasyEffects + ddcutil (apt) + songrec (author's PPA, key fingerprint checked)
 ./setup.sh 70            # optional: VS Code from Microsoft's apt repo
 ```
 
@@ -43,7 +43,7 @@ Not touched: Plasma configs (`kdeglobals`, `dolphinrc`, `konsolerc`, `kitty`, `f
 
 - **Compiler:** Hyprland 0.56 uses C++26 `#embed`; built with `clang-20` from Ubuntu updates against the system libstdc++ 14.
 - **`patches/`:** libstdc++ 14 lacks a few C++23/26 library bits (`vector::append_range`, `string + string_view`, `ranges::starts_with`), and clang-20 + libstdc++ 14 trips on `range | std::ranges::to<T>()`. The patches swap these for equivalent C++20 code (17 one-line changes). hyprsunset's patch keeps its systemd unit inside `PREFIX`. aquamarine's patch backports three DRM teardown fixes from upstream main (after 0.15.1, DRM.cpp only, no ABI change) plus the same null-connector guard on the VT switch-away path; aquamarine is built with debug info so DRM/session crashes resolve to a source line.
-- **Built because noble lacks or has too-old versions:** wayland 1.26, wayland-protocols 1.49, libinput 1.32, xkbcommon 1.13, libdisplay-info 0.4, libei 1.6, Lua 5.5, xcb-util-errors, readline (no ncurses-dev needed), PipeWire 1.2 client lib (xdph needs ≥ 1.1.82), sdbus-c++ 2, cpptrace with libunwind.
+- **Built because noble lacks or has too-old versions:** swappy 1.8, wayland 1.26, wayland-protocols 1.49, libinput 1.32, xkbcommon 1.13, libdisplay-info 0.4, libei 1.6, Lua 5.5, xcb-util-errors, readline (no ncurses-dev needed), PipeWire 1.2 client lib (xdph needs ≥ 1.1.82), sdbus-c++ 2, cpptrace with libunwind.
 - **Plasma 5 vs the dots' KDE 6 expectations:** `session-bin/kcmshell6` forwards to `kcmshell5`.
 - **ImageMagick 6:** `session-bin/magick` maps IM7-style calls to IM6 tools.
 - **Lock screen:** Quickshell's lock and the hyprlock fallback both use `/etc/pam.d/login` (hyprlock is configured with `auth:pam:module = login`), so no PAM file is added.
@@ -54,7 +54,7 @@ Not touched: Plasma configs (`kdeglobals`, `dolphinrc`, `konsolerc`, `kitty`, `f
 ## Known issues
 
 - **Switching to a text console (Ctrl+Alt+F*n*) inside Hyprland** crashed it (segfault at address 0 in aquamarine when the seat is disabled). `patches/aquamarine-drm-teardown-fixes.patch` targets this but is not confirmed yet; until it is, log out instead. If it still crashes: `journalctl -k -b | grep segfault`, then `llvm-addr2line-20 -f -C -i -e ~/.local/opt/hyprland/lib/libaquamarine.so.0.15.1 0x<offset>` with the offset from the `[...]` part.
-- Not set up: `ydotool` (noble's 0.1.8 predates the 1.x CLI the dots use, and needs `/dev/uinput` access) and `ddcutil` (external-monitor brightness; needs the `i2c` group); both are deliberate group/permission decisions. `swappy` (screenshot annotation) isn't in noble and its build dependency `libgtk-3-dev` currently pulls a mesa upgrade; satty's release binary needs glibc 2.43.
+- **ydotool** is a shim over `wtype` (`session-bin/ydotool`): real ydotool needs `/dev/uinput`, i.e. permission for any of your programs to type into every session; wtype uses Hyprland's virtual-keyboard protocol and only reaches Hyprland windows. It covers clipboard auto-paste and the on-screen keyboard (US key table); mouse commands aren't supported.
 - `maintenance/repair-etckeeper.sh`: one-off repair for a corrupt `/etc/.git` (backs it up to `/root` first).
 - The session wrapper's NVIDIA variables assume a dGPU-only (MUX) laptop or a desktop; review them on hybrid graphics.
 

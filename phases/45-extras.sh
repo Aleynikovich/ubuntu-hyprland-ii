@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# OPTIONAL: EasyEffects (Ubuntu apt) and songrec (its author's Launchpad PPA, key checked against Launchpad's fingerprint).
+# OPTIONAL: EasyEffects + ddcutil (Ubuntu apt) and songrec (its author's Launchpad PPA, key checked against Launchpad's fingerprint).
+# ddcutil (external-monitor brightness in the bar) needs no group: its udev rule gives the logged-in user access (uaccess).
 # New packages only, like the other apt phases. The dots autostart EasyEffects in Hyprland; Plasma doesn't start it.
 # Rollback: sudo apt-get purge $(cat "$SRC/apt-installed-extras.txt") && sudo apt-get autoremove
 #           sudo rm /etc/apt/sources.list.d/songrec-ppa.sources /etc/apt/keyrings/songrec-ppa.gpg && sudo apt-get update
@@ -34,6 +35,6 @@ Signed-By: $KEY
 EOF
 sudo apt-get update
 
-step "apt: easyeffects songrec"
-apt_install_new_only "$REC" easyeffects songrec
+step "apt: easyeffects ddcutil songrec"
+apt_install_new_only "$REC" easyeffects ddcutil songrec
 ok "Extras installed."

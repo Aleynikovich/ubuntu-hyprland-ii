@@ -14,7 +14,7 @@ DEFAULT=(00 15 20 30 40 50 60)
 
 if [ "${1:-}" = --list ] || [ "${1:-}" = -h ]; then
   for f in "$REPO"/phases/*.sh; do printf '%-26s %s\n' "$(basename "$f")" "$(sed -n 2p "$f" | sed 's/^# //')"; done
-  echo; echo "Default: ${DEFAULT[*]}   (opt-in: 10 = remove snaps, 45 = EasyEffects + songrec, 70 = VS Code)"; exit 0
+  echo; echo "Default: ${DEFAULT[*]}   (opt-in: 10 = remove snaps, 45 = EasyEffects + ddcutil + songrec, 70 = VS Code)"; exit 0
 fi
 [ $# -gt 0 ] && SEL=("$@") || SEL=("${DEFAULT[@]}")
 

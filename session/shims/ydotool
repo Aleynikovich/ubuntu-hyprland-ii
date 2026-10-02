@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+# ydotool -> wtype (Hyprland session PATH only). Real ydotool needs /dev/uinput, i.e. permission to inject keys into
+# every session; wtype goes through Hyprland's virtual-keyboard protocol and only reaches Hyprland windows.
+# Covers what the dots use: `ydotool key [-d N] code:state ...` (clipboard auto-paste, on-screen keyboard) and
+# `ydotool type TEXT`. wtype releases everything when it exits, so modifiers the on-screen keyboard holds across
+# separate calls are remembered in $XDG_RUNTIME_DIR. Key table: evdev codes on a US layout.
+import os, subprocess, sys
+
+MODS = {29: "ctrl", 97: "ctrl", 42: "shift", 54: "shift", 56: "alt", 100: "altgr", 125: "logo", 126: "logo"}
+KEYS = {1: "Escape", 14: "BackSpace", 15: "Tab", 28: "Return", 57: "space", 58: "Caps_Lock", 99: "Print",
+        102: "Home", 103: "Up", 104: "Prior", 105: "Left", 106: "Right", 107: "End", 108: "Down", 109: "Next",
+        110: "Insert", 111: "Delete", 139: "Menu", 87: "F11", 88: "F12"}
+KEYS.update({59 + i: f"F{i + 1}" for i in range(10)})
+# code: (plain, shifted)
+CHARS = {2: ("1", "exclam"), 3: ("2", "at"), 4: ("3", "numbersign"), 5: ("4", "dollar"), 6: ("5", "percent"),
+         7: ("6", "asciicircum"), 8: ("7", "ampersand"), 9: ("8", "asterisk"), 10: ("9", "parenleft"),
+         11: ("0", "parenright"), 12: ("minus", "underscore"), 13: ("equal", "plus"), 26: ("bracketleft", "braceleft"),
+         27: ("bracketright", "braceright"), 39: ("semicolon", "colon"), 40: ("apostrophe", "quotedbl"),
+         41: ("grave", "asciitilde"), 43: ("backslash", "bar"), 51: ("comma", "less"), 52: ("period", "greater"),
+         53: ("slash", "question"), 86: ("less", "greater")}
+for row, start in (("qwertyuiop", 16), ("asdfghjkl", 30), ("zxcvbnm", 44)):
+    CHARS.update({start + i: (c, c.upper()) for i, c in enumerate(row)})
+
+STATE = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "ydotool-shim-mods")
+
+
+def load():
+    try:
+        return set(open(STATE).read().split())
+    except OSError:
+        return set()
+
+
+def key(args):
+    delay, events = "0", []
+    it = iter(args)
+    for a in it:
+        if a in ("-d", "--key-delay"):
+            delay = next(it, "0")
+        elif a.startswith("--key-delay="):
+            delay = a.split("=", 1)[1]
+        elif ":" in a:
+            code, state = a.split(":", 1)
+            events.append((int(code), state != "0"))
+    held = load()
+    cmd, pressed = [], set()
+    for code, down in events:
+        if code in MODS:
+            m = MODS[code]
+            if down:
+                held.add(m)
+            else:
+                held.discard(m)
+                if m in pressed:
+                    cmd += ["-m", m]
+                    pressed.discard(m)
+            continue
+        if code in CHARS:  # shift alone: send the shifted symbol itself (wtype's keymap has one level per key)
+            plain, shifted = CHARS[code]
+            only_shift = "shift" in held and not held - {"shift", "capslock"}
+            sym, mods = (shifted, held - {"shift"}) if only_shift else (plain, held)
+        elif code in KEYS:
+            sym, mods = KEYS[code], held
+        else:
+            continue
+        if not down:
+            if sym in pressed:
+                cmd += ["-p", sym]
+                pressed.discard(sym)
+            continue  # pressed in an earlier call: that wtype already released it on exit
+        for m in sorted(mods - pressed):
+            cmd += ["-M", m]
+            pressed.add(m)
+        cmd += ["-P", sym]
+        pressed.add(sym)
+        if delay != "0":
+            cmd += ["-s", delay]
+    with open(STATE, "w") as f:
+        f.write(" ".join(sorted(held)))
+    return subprocess.call(["wtype", *cmd]) if cmd else 0
+
+
+def main():
+    if len(sys.argv) < 2:
+        sys.exit("usage: ydotool key code:state ... | ydotool type TEXT  (wtype shim)")
+    sub, args = sys.argv[1], sys.argv[2:]
+    if sub == "key":
+        sys.exit(key(args))
+    if sub == "type":
+        text = [a for a in args if not a.startswith("-")]
+        sys.exit(subprocess.call(["wtype", " ".join(text)]) if text else 0)
+    sys.exit(f"ydotool shim: '{sub}' isn't supported (only key/type; wtype can't move the mouse)")
+
+
+main()

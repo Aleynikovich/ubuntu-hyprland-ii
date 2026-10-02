@@ -50,7 +50,7 @@ for spec in 'google/fonts ofl/rubik .' 'google/fonts ofl/readexpro .' 'google/fo
   done
 done
 U=$(gh_asset ryanoasis/nerd-fonts '^JetBrainsMono\.tar\.xz$'); wget -q -O jbm-nf.txz "$U"
-mkdir -p "$F/JetBrainsMonoNF"; tar -xJf jbm-nf.txz -C "$F/JetBrainsMonoNF" --wildcards '*.ttf'
+mkdir -p "$F/JetBrainsMonoNF"; tar -xJf jbm-nf.txz -C "$F/JetBrainsMonoNF" --wildcards 'JetBrainsMonoNerdFont-*.ttf'  # dots use only this family (not Mono/Propo/NL)
 fc-cache -f "$F" >/dev/null
 
 step "Bibata cursor + adw-gtk3 theme"

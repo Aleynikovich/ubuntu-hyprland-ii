@@ -41,7 +41,7 @@ fi
 step "Session wrapper + shims -> $P/session-bin"
 S=$P/session-bin; mkdir -p "$S"
 for b in Hyprland hyprland hyprctl hyprpm hyprlock hypridle hyprpicker hyprsunset start-hyprland hyprland-share-picker \
-         hyprshot matugen starship uv uvx quickshell; do
+         hyprshot matugen starship uv uvx quickshell swappy; do
   if [ -e "$P/bin/$b" ]; then ln -sfn "$P/bin/$b" "$S/$b"; fi
 done
 install -m755 "$REPO/session/hyprland-ii-session" "$S/hyprland-ii-session"
