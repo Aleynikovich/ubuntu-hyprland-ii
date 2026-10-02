@@ -56,6 +56,16 @@ Not touched: Plasma configs (`kdeglobals`, `dolphinrc`, `konsolerc`, `kitty`, `f
 - **Icons:** `QS_ICON_THEME=breeze-dark` (the private Qt has no KDE platform theme).
 - **VS Code on Hyprland:** `~/.vscode/argv.json` gets `"password-store": "gnome-libsecret"` (Hyprland isn't auto-detected).
 
+## Sleep and hibernate (phases 90-93, Lenovo Legion 7 16IRX9 + RTX 4070, driver 595 open)
+
+Found the hard way (about ten hard reboots); don't undo these without testing with an RTC wake alarm, not the lid:
+
+- **s2idle, not S3 "deep".** After S3 the NVIDIA driver never re-lights the eDP panel (black even on the text console). Phase 91 puts `mem_sleep_default=s2idle` on the Limine command line.
+- **NVIDIA suspends from the kernel** (`NVreg_UseKernelSuspendNotifiers=1`, runtime D3 off) and the `nvidia-suspend/resume/hibernate` systemd services are masked: their `chvt 63` dance froze the whole machine on resume (phase 90).
+- **Hibernate** uses a 32 GB `/swap.img` with `resume=UUID=... resume_offset=...` on the command line (phases 90/91). Wake it with the power button; the RTC alarm cannot wake from S4 here.
+- **The machine boots Limine from the ESP, not GRUB** (phase 92 removes GRUB). Phase 91 installs `limine-esp-sync` (kernel postinst and `update-initramfs` hooks) so the ESP copy of the kernel/initrd follows `/boot`; the previous kernel stays as the second menu entry, without the EDID pin.
+- Phase 93 pins the panel EDID (`drm.edid_firmware`): it stops a retry loop after resume, but it was not what fixed sleep.
+
 ## Known issues
 
 - **Switching to a text console (Ctrl+Alt+F*n*) inside Hyprland** crashed it (segfault at address 0 in aquamarine when the seat is disabled). `patches/aquamarine-drm-teardown-fixes.patch` targets this but is not confirmed yet; until it is, log out instead. If it still crashes: `journalctl -k -b | grep segfault`, then `llvm-addr2line-20 -f -C -i -e ~/.local/opt/hyprland/lib/libaquamarine.so.0.15.1 0x<offset>` with the offset from the `[...]` part.
