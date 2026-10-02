@@ -20,7 +20,10 @@ v=$1; ESP=/boot/efi
 newest=$(ls /boot/vmlinuz-* | sed 's|.*/vmlinuz-||' | sort -V | tail -1)
 [ "$v" = "$newest" ] || exit 0
 if ! cmp -s "/boot/vmlinuz-$v" "$ESP/vmlinuz" || ! cmp -s "/boot/initrd.img-$v" "$ESP/initrd.img"; then
-  [ -f "$ESP/vmlinuz" ] && cp -f "$ESP/vmlinuz" "$ESP/vmlinuz.old" && cp -f "$ESP/initrd.img" "$ESP/initrd.img.old"
+  # keep the previous *kernel* as fallback; a rebuilt initrd of the same kernel must not displace it
+  if [ -f "$ESP/vmlinuz" ] && ! cmp -s "/boot/vmlinuz-$v" "$ESP/vmlinuz"; then
+    cp -f "$ESP/vmlinuz" "$ESP/vmlinuz.old" && cp -f "$ESP/initrd.img" "$ESP/initrd.img.old"
+  fi
   cp -f "/boot/vmlinuz-$v" "$ESP/vmlinuz.new" && cp -f "/boot/initrd.img-$v" "$ESP/initrd.img.new"
   mv -f "$ESP/vmlinuz.new" "$ESP/vmlinuz" && mv -f "$ESP/initrd.img.new" "$ESP/initrd.img"
   sync
