@@ -46,6 +46,7 @@ fi
 step "Session wrapper + shims -> $P/session-bin"
 S=$P/session-bin; mkdir -p "$S"
 for b in Hyprland hyprland hyprctl hyprpm hyprlock hypridle hyprpicker hyprsunset start-hyprland hyprland-share-picker \
+         hyprland-dialog hyprland-donate-screen hyprland-run hyprland-update-screen hyprland-welcome \
          hyprshot matugen starship uv uvx quickshell swappy; do
   if [ -e "$P/bin/$b" ]; then ln -sfn "$P/bin/$b" "$S/$b"; fi
 done

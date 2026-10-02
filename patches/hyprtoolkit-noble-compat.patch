@@ -1,0 +1,46 @@
+diff --git a/src/element/text/Text.cpp b/src/element/text/Text.cpp
+index ec1e462..42455c7 100644
+--- a/src/element/text/Text.cpp
++++ b/src/element/text/Text.cpp
+@@ -358,7 +358,7 @@ void STextImpl::setPangoEllipsize() {
+         pango_layout_set_wrap(pangoData.layout, PANGO_WRAP_WORD_CHAR);
+         pango_layout_set_ellipsize(pangoData.layout, PANGO_ELLIPSIZE_NONE);
+     } else {
+-        pango_layout_set_wrap(pangoData.layout, PANGO_WRAP_NONE);
++        pango_layout_set_wrap(pangoData.layout, PANGO_WRAP_WORD);
+         pango_layout_set_ellipsize(pangoData.layout, PANGO_ELLIPSIZE_END);
+     }
+ }
+diff --git a/src/system/Icons.cpp b/src/system/Icons.cpp
+index 23e592f..275747a 100644
+--- a/src/system/Icons.cpp
++++ b/src/system/Icons.cpp
+@@ -40,7 +40,9 @@ static std::vector<std::string> getXDGIconThemeDirsFromEnv() {
+     auto dataDirs    = Env::getEnv("XDG_DATA_DIRS").value_or("/usr/local/share/:/usr/share/");
+     auto dataHomeDir = std::string(Env::getEnv("XDG_DATA_HOME").value_or("~/.local/share/"));
+ 
+-    auto dirs = dataDirs | std::views::split(':') | std::ranges::to<std::vector<std::string>>();
++    std::vector<std::string> dirs;
++    for (auto&& part : dataDirs | std::views::split(':'))
++        dirs.emplace_back(part.begin(), part.end());
+ 
+     dirs.insert(dirs.begin(), dataHomeDir);
+ 
+@@ -120,7 +122,7 @@ static std::optional<std::vector<std::string>> findAnyTheme() {
+             // try to find it
+             auto themeDir = getThemeDir(iconTheme);
+             if (themeDir && !themeDir->empty()) {
+-                g_logger->log(HT_LOG_TRACE, "CSystemIconFactory: Found {} as default fallback", themeDir.value());
++                g_logger->log(HT_LOG_TRACE, "CSystemIconFactory: Found {} dirs as default fallback", themeDir->size());
+                 return themeDir;
+             }
+ 
+@@ -240,7 +242,7 @@ void CSystemIconFactory::parseTheme(const std::string& themeDir) {
+ 
+             auto inheritTheme = getThemeDir(trim(std::string{inheritName}));
+             if (inheritTheme) {
+-                g_logger->log(HT_LOG_TRACE, "CSystemIconFactory: parsing inherited theme {}", *inheritTheme);
++                g_logger->log(HT_LOG_TRACE, "CSystemIconFactory: parsing inherited theme {}", inheritName);
+                 parseThemes(*inheritTheme);
+             } else
+                 g_logger->log(HT_LOG_WARNING, "CSystemIconFactory: inherited theme {} not found", std::string{inheritName});

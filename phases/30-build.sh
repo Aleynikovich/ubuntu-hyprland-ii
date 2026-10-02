@@ -128,6 +128,12 @@ c_hyprland_protocols(){ git_src https://github.com/hyprwm/hyprland-protocols v0.
 c_hyprcursor(){ git_src https://github.com/hyprwm/hyprcursor v0.1.13 hyprcursor; cmake_build "${CLANG[@]}"; }
 c_hyprgraphics(){ git_src https://github.com/hyprwm/hyprgraphics v0.5.1 hyprgraphics; cmake_build "${CLANG[@]}"; }
 c_hyprwire(){ git_src https://github.com/hyprwm/hyprwire v0.3.1 hyprwire; cmake_build "${CLANG[@]}"; }
+# hyprtoolkit wants iniparser.pc (noble's -dev ships none) and abseil (noble has 2022; none installed)
+c_iniparser(){ git_src https://gitlab.com/iniparser/iniparser.git v4.3.0 iniparser; cmake_build -DBUILD_TESTING=OFF -DBUILD_DOCS=OFF -DBUILD_EXAMPLES=OFF; }
+c_abseil(){ git_src https://github.com/abseil/abseil-cpp 20250814.2 abseil-cpp
+  cmake_build -DABSL_PROPAGATE_CXX_STD=ON -DABSL_BUILD_TESTING=OFF -DCMAKE_CXX_STANDARD=20 -DBUILD_SHARED_LIBS=ON; }
+c_hyprtoolkit(){ git_src https://github.com/hyprwm/hyprtoolkit v0.6.0 hyprtoolkit; cmake_build "${CLANG[@]}"; }
+c_hyprland_guiutils(){ git_src https://github.com/hyprwm/hyprland-guiutils v0.2.2 hyprland-guiutils; cmake_build "${CLANG[@]}"; }  # Hyprland's permission/notice dialogs
 # Debug info: aquamarine is where Hyprland's DRM/session crashes land (e.g. the VT-switch segfault); keeps them resolvable.
 c_aquamarine(){ git_src https://github.com/hyprwm/aquamarine v0.15.1 aquamarine; cmake_build "${CLANG[@]}" -DCMAKE_BUILD_TYPE=RelWithDebInfo; }
 c_hyprland(){ git_src https://github.com/hyprwm/Hyprland v0.56.2 Hyprland
@@ -176,7 +182,7 @@ c_qml_links(){ # expose private QML modules inside the private Qt, so no QML_IMP
 }
 
 ALL=(tools wayland wayland_protocols xkbcommon libinput lua util_macros xcb_proto xcb_errors
-     hyprwayland_scanner hyprutils hyprlang hyprland_protocols hyprcursor hyprgraphics hyprwire libdisplay_info libei readline aquamarine hyprland
+     hyprwayland_scanner hyprutils hyprlang hyprland_protocols hyprcursor hyprgraphics hyprwire libdisplay_info libei readline iniparser abseil aquamarine hyprtoolkit hyprland hyprland_guiutils
      qt ecm kirigami syntax_highlighting cpptrace quickshell hyprland_qt_support
      sdbus pipewire xdph hypridle hyprlock hyprpicker hyprsunset swappy microtex qml_links)
 

@@ -5,7 +5,7 @@
 #   EXPECT=<file>  abort unless the simulated removal list matches this file exactly (one package per line)
 # Rollback: sudo apt-get install $(cat "$SRC"/apt-removed-hyprland-only-*.txt)   (configs: etckeeper history of /etc)
 #           sudo apt-mark auto $(cat "$SRC"/apt-marked-manual-hyprland-only-*.txt)
-#           sudo rm /etc/sddm.conf.d/hyprland-ii-autologin.conf
+#           sudo rm /etc/sddm.conf.d/hyprland-ii-autologin.conf; sudo dpkg-divert --rename --remove /usr/share/xsessions/plasma.desktop
 set -euo pipefail
 source "$(dirname "$0")/../lib/common.sh"
 
@@ -18,7 +18,7 @@ step "Simulating"
 keep=(); roots=(); args=()
 for p in $(list hyprland-only-keep.txt); do installed "$p" && keep+=("$p") && args+=("$p+"); done
 for p in $(list hyprland-only-roots.txt); do installed "$p" && roots+=("$p") && args+=("$p-"); done
-[ ${#roots[@]} -gt 0 ] || { ok "Nothing left to remove."; exit 0; }
+if [ ${#roots[@]} -eq 0 ]; then ok "Nothing left to remove."; else
 sim=$(apt-get -s --auto-remove install "${args[@]}" 2>&1) || { echo "$sim" | tail -5; die "apt simulation failed"; }
 inst=$(echo "$sim" | grep -c '^Inst' || true)
 [ "$inst" = 0 ] || { echo "$sim" | grep '^Inst'; die "The simulation would INSTALL packages; refusing."; }
@@ -42,6 +42,7 @@ cp "$plan" "$SRC/apt-removed-hyprland-only-$TS.txt"
 sudo DEBIAN_FRONTEND=noninteractive apt-get purge -y "${remove[@]}"
 left=$(apt-get -s autoremove 2>/dev/null | grep -c '^Remv' || true)
 [ "$left" = 0 ] && ok "Nothing else is autoremovable." || { warn "apt now lists $left autoremovable packages (not removed):"; apt-get -s autoremove | grep '^Remv'; }
+fi
 
 step "SDDM autologin into Hyprland"
 sudo install -d -m 0755 /etc/sddm.conf.d
@@ -53,4 +54,22 @@ Session=hyprland-ii
 Relogin=false
 EOF
 cat /etc/sddm.conf.d/hyprland-ii-autologin.conf
+# Plasma's SDDM settings module leaves an empty [Autologin] section (User=, Session=) in /etc/sddm.conf and
+# kde_settings.conf; /etc/sddm.conf is read last and would override the file above. Drop those sections.
+for f in /etc/sddm.conf /etc/sddm.conf.d/kde_settings.conf; do
+  [ -f "$f" ] && grep -q '^\[Autologin\]' "$f" || continue
+  sudo python3 - "$f" <<'PY'
+import re, sys
+p = sys.argv[1]; s = open(p).read()
+open(p, "w").write(re.sub(r"(?ms)^\[Autologin\]\n.*?(?=^\[|\Z)", "", s))
+PY
+  echo "removed [Autologin] from $f"
+done
+
+step "Hide the Plasma (X11) session (its file belongs to plasma-workspace, which the dots' users KCM needs)"
+X=/usr/share/xsessions/plasma.desktop
+if [ -e "$X" ] && ! dpkg-divert --list "$X" | grep -q .; then
+  sudo dpkg-divert --local --rename --divert "$X.hyprland-ii-hidden" --add "$X"
+fi
+ls /usr/share/xsessions/ /usr/share/wayland-sessions/
 ok "Hyprland-only. Removed list: $SRC/apt-removed-hyprland-only-$TS.txt"
