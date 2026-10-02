@@ -13,7 +13,7 @@ LOG=$SRC/dots-installed.txt
 
 # Copied: used only by the Hyprland session. xdg-desktop-portal holds hyprland-portals.conf (only read when desktop=Hyprland).
 COPY=(hypr quickshell fuzzel matugen wlogout fish xdg-desktop-portal)
-# Deliberately NOT copied (Plasma/other apps read them): kdeglobals dolphinrc konsolerc kitty starship.toml fontconfig
+# Deliberately NOT copied (Plasma/other apps read them): kdeglobals dolphinrc konsolerc starship.toml fontconfig
 #   Kvantum darklyrc kde-material-you-colors zshrc.d mpv *-flags.conf. The upstream installer's gsettings/kwriteconfig
 #   theme changes and user-group changes (input, i2c) are skipped too.
 
@@ -41,6 +41,21 @@ mkdir -p ~/.local/share/icons
 # the same one Quickshell's lock screen uses, instead of adding a file to /etc.
 if ! grep -q 'module = login' ~/.config/hypr/hyprlock.conf; then
   printf '\n# Ubuntu: no /etc/pam.d/hyprlock; use the login policy (same one Quickshell lock uses)\nauth {\n    pam {\n        module = login\n    }\n}\n' >> ~/.config/hypr/hyprlock.conf
+fi
+
+step "foot terminal: config + point the shell's terminal actions at it"
+# The dots ship their own foot.ini; ours (templates/foot.ini) keeps their keybindings and adds fonts/padding/Catppuccin Macchiato/88% alpha.
+mkdir -p ~/.config/foot
+if [ -f ~/.config/foot/foot.ini ] && ! cmp -s "$REPO/templates/foot.ini" ~/.config/foot/foot.ini && [ ! -e ~/.config/foot/foot.ini.orig ]; then
+  cp ~/.config/foot/foot.ini ~/.config/foot/foot.ini.orig
+fi
+install -m644 "$REPO/templates/foot.ini" ~/.config/foot/foot.ini
+sed -i 's/^term_alpha=100/term_alpha=88/' ~/.config/quickshell/ii/scripts/colors/applycolor.sh   # wallpaper theming keeps the terminal translucent
+CJ=~/.config/illogical-impulse/config.json   # exists after the shell's first run; skipped (with a note) otherwise
+if [ -f "$CJ" ]; then
+  sed -i 's/kitty -1 --hold=\?[a-z]* \?/foot --hold /; s/"terminal": "kitty -1"/"terminal": "foot"/; s/"kitty"/"foot"/' "$CJ"
+else
+  warn "no $CJ yet: start the shell once, then re-run phase 50 to point its terminal actions at foot"
 fi
 
 step "Session wrapper + shims -> $P/session-bin"

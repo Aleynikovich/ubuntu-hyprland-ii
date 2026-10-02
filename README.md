@@ -17,6 +17,8 @@ git clone <this repo> ~/src/ubuntu-hyprland-ii && cd ~/src/ubuntu-hyprland-ii
 ./setup.sh 45            # optional: EasyEffects + ddcutil (apt) + songrec (author's PPA, key fingerprint checked)
 ./setup.sh 70            # optional: VS Code from Microsoft's apt repo
 ./setup.sh 80            # optional, destructive: remove Plasma/KDE apps/GNOME/X11 sessions, autologin into Hyprland
+./setup.sh 90 91 92 93   # optional: sleep/hibernate fixes, Limine ESP boot, GRUB removal, panel EDID pin (see "Sleep and hibernate"; laptop-specific)
+./setup.sh 95            # optional: keep GPU/CPU clocks up on AC so first launches aren't laggy (see "Responsiveness")
 ```
 
 Phase 80 pins `packages/hyprland-only-keep.txt` (what the dots use from KDE/GNOME: Dolphin, the KDE file dialog, the network/Bluetooth/users KCMs, plasma-systemmonitor, Breeze, gnome-keyring, fprintd; plus sssd, printing, audio/network plumbing) as manually installed, then purges what `apt --auto-remove` computes around `packages/hyprland-only-roots.txt`. It shows the list first (and `EXPECT=<file>` aborts unless the list matches a reviewed one). It removes ~660 packages / 2.4 GB on a `kde-full` + `ubuntu-desktop` install; nothing is installed. The X server core stays (the NVIDIA driver package depends on it), and so does XWayland. Removed packages are listed in `~/src/hypr/apt-removed-hyprland-only-*.txt` for reinstalling; `/etc` changes are in etckeeper.
@@ -31,9 +33,9 @@ Log out and pick **Hyprland (illogical-impulse)** in SDDM. Phases can be re-run:
 | `~/src/hypr` (`SRC`) | sources, build trees, logs, lists of apt packages installed (for rollback) |
 | `~/.config/{hypr,quickshell,fuzzel,matugen,wlogout,fish,xdg-desktop-portal}` | dots: **only copied if the folder doesn't exist** |
 | `~/.local/share/{fonts/illogical-impulse,icons,themes}` | fonts, Bibata cursor, adw-gtk3 |
-| `/usr/share/wayland-sessions/hyprland-ii.desktop`, `/opt/MicroTeX` (link into `PREFIX`) | written outside your home (besides apt packages); phase 80 adds `/etc/sddm.conf.d/hyprland-ii-autologin.conf` |
+| `/usr/share/wayland-sessions/hyprland-ii.desktop`, `/opt/MicroTeX` (link into `PREFIX`) | written outside your home (besides apt packages); phase 80 adds `/etc/sddm.conf.d/hyprland-ii-autologin.conf`; phase 95 adds `/usr/local/sbin/gpu-warm`, `/etc/systemd/system/gpu-warm.service`, `/etc/udev/rules.d/99-gpu-warm.rules` |
 
-Not touched: Plasma configs (`kdeglobals`, `dolphinrc`, `konsolerc`, `kitty`, `fontconfig`, ...), user groups, `gsettings`, `/etc/pam.d`, the NVIDIA driver, anything in `config.env`'s `PROTECTED_UNITS` (fingerprinted before and checked after every run).
+Not touched: Plasma configs (`kdeglobals`, `dolphinrc`, `konsolerc`, `fontconfig`, ...), user groups, `gsettings`, `/etc/pam.d`, the NVIDIA driver, anything in `config.env`'s `PROTECTED_UNITS`/`PROTECTED_PACKAGES`/`PROTECTED_PATHS` (the Fleet/osquery agent `orbit`, `fleet-osquery`, `sunrise-firstboot`; fingerprinted before and checked after every run). No phase here touches them, including the later ones (90-95).
 
 ## How it stays isolated
 
@@ -48,7 +50,7 @@ Not touched: Plasma configs (`kdeglobals`, `dolphinrc`, `konsolerc`, `kitty`, `f
 - **`patches/`:** libstdc++ 14 lacks a few C++23/26 library bits (`vector::append_range`, `string + string_view`, `ranges::starts_with`), and clang-20 + libstdc++ 14 trips on `range | std::ranges::to<T>()`. The patches swap these for equivalent C++20 code (17 one-line changes). hyprsunset's patch keeps its systemd unit inside `PREFIX`. aquamarine's patch backports three DRM teardown fixes from upstream main (after 0.15.1, DRM.cpp only, no ABI change) plus the same null-connector guard on the VT switch-away path; aquamarine is built with debug info so DRM/session crashes resolve to a source line.
 - **Built because noble lacks or has too-old versions:** swappy 1.8, wayland 1.26, wayland-protocols 1.49, libinput 1.32, xkbcommon 1.13, libdisplay-info 0.4, libei 1.6, Lua 5.5, xcb-util-errors, readline (no ncurses-dev needed), PipeWire 1.2 client lib (xdph needs ≥ 1.1.82), sdbus-c++ 2, cpptrace with libunwind.
 - **Plasma 5 vs the dots' KDE 6 expectations:** `session-bin/kcmshell6` forwards to `kcmshell5`.
-- **Terminal:** foot (`~/.config/hypr/custom/variables.lua` sets `terminal = "foot"`; `config.json` update/password actions run `foot --hold`, and "update" runs apt instead of pacman). foot.ini is a Catppuccin Macchiato fallback at 88% alpha; the wallpaper theme (`applycolor.sh`, `term_alpha=88`) recolours it via OSC sequences at fish start. kitty was dropped because Ubuntu's kitty recompiles its Python on every launch (~0.4s slower than foot).
+- **Terminal:** foot. `templates/foot.ini` (installed by phase 50) keeps the dots' keybindings and adds JetBrainsMono Nerd Font 12, padding, a Catppuccin Macchiato palette at 88% alpha as the fallback, and no client-side decorations. `~/.config/hypr/custom/variables.lua` sets `terminal = "foot"` and the shell's `config.json` update/password actions run `foot --hold` ("update" runs apt instead of pacman). The dots' wallpaper theming (`applycolor.sh`, `term_alpha=88`) recolours terminals over OSC sequences at fish start, but only works once a wallpaper has been set. Previously kitty: Ubuntu's kitty 0.32 ran Python with `-OO` without shipping those `.pyc` files, recompiling ~100 modules on every launch (~0.5 s), so foot starts ~0.3 s faster even after fixing that.
 - **Update counter:** `session-bin/checkupdates` stands in for Arch's `checkupdates` (`apt list --upgradable`).
 - **ImageMagick 6:** `session-bin/magick` maps IM7-style calls to IM6 tools.
 - **Lock screen:** Quickshell's lock and the hyprlock fallback both use `/etc/pam.d/login` (hyprlock is configured with `auth:pam:module = login`), so no PAM file is added.
@@ -65,6 +67,15 @@ Found the hard way (about ten hard reboots); don't undo these without testing wi
 - **Hibernate** uses a 32 GB `/swap.img` with `resume=UUID=... resume_offset=...` on the command line (phases 90/91). Wake it with the power button; the RTC alarm cannot wake from S4 here.
 - **The machine boots Limine from the ESP, not GRUB** (phase 92 removes GRUB). Phase 91 installs `limine-esp-sync` (kernel postinst and `update-initramfs` hooks) so the ESP copy of the kernel/initrd follows `/boot`; the previous kernel stays as the second menu entry, without the EDID pin.
 - Phase 93 pins the panel EDID (`drm.edid_firmware`): it stops a retry loop after resume, but it was not what fixed sleep.
+
+## Responsiveness (phase 95)
+
+Symptom: after some time in one app, the first new window (e.g. a terminal after a while in VS Code) or workspace switch stutters once, then everything is snappy. Measured cause: the RTX 4070 idles at P8 (210 MHz) and the first frame waits for it to clock up; the CPU was also sitting in `power-saver`/EPP `power` on AC. Phase 95 installs `/usr/local/sbin/gpu-warm`, `gpu-warm.service` (boot, resume from suspend/hibernate) and a udev rule (AC plug/unplug):
+
+- **On AC:** GPU graphics clock floor 1200 MHz (max unchanged; idle draw ~6 W vs ~4 W), power profile `performance`, CPU governor `performance` (Isaac Sim warns about a `powersave` governor even though `intel_pstate` + EPP `performance` is equivalent), and `nvidia-persistenced` is pulled in.
+- **On battery:** floor released, `balanced`, governor `powersave`.
+
+Isaac Sim's "IOMMU is enabled" warning is Ubuntu's default and was left alone (turning it off needs a kernel command line change).
 
 ## Known issues
 
