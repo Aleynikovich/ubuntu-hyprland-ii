@@ -22,3 +22,6 @@ geoclue-2-demo
 libgirepository-2.0-dev
 pulseaudio-utils
 jq
+bat
+fzf
+zoxide

@@ -1,0 +1,80 @@
+# Two lines: [ path ][ git ] ......... [ duration ] [ time ]  /  ❯
+format = """
+[](mauve)[󰝰 ](bg:mauve fg:crust)$directory[](mauve)$git_branch$git_status$fill$cmd_duration$time
+$character"""
+
+add_newline = true
+palette = "catppuccin_macchiato"
+
+[palettes.catppuccin_macchiato]
+rosewater = "#f4dbd6"
+flamingo = "#f0c6c6"
+pink = "#f5bde6"
+mauve = "#c6a0f6"
+red = "#ed8796"
+maroon = "#ee99a0"
+peach = "#f5a97f"
+yellow = "#eed49f"
+green = "#a6da95"
+teal = "#8bd5ca"
+sky = "#91d7e3"
+sapphire = "#7dc4e4"
+blue = "#8aadf4"
+lavender = "#b7bdf8"
+text = "#cad3f5"
+subtext1 = "#b8c0e0"
+subtext0 = "#a5adcb"
+overlay2 = "#939ab7"
+overlay1 = "#8087a2"
+overlay0 = "#6e738d"
+surface2 = "#5b6078"
+surface1 = "#494d64"
+surface0 = "#363a4f"
+base = "#24273a"
+mantle = "#1e2030"
+crust = "#181926"
+
+
+[character]
+success_symbol = "[❯](bold mauve)"
+error_symbol = "[❯](bold red)"
+
+[directory]
+style = "bg:mauve fg:crust bold"
+format = "[$path]($style)[$read_only]($read_only_style)"
+truncation_length = 4
+truncation_symbol = "…/"
+truncate_to_repo = true
+home_symbol = "~"
+read_only = " 󰌾"
+read_only_style = "bg:mauve fg:red"
+
+[directory.substitutions]
+"Documents" = "󰈙 Documents"
+"Downloads" = " Downloads"
+"Pictures" = " Pictures"
+"src" = " src"
+".config" = " .config"
+
+[git_branch]
+symbol = "\ue0a0"
+style = "bg:surface1 fg:pink bold"
+format = " [](surface1)[ $symbol $branch]($style)"
+
+[git_status]
+style = "bg:surface1 fg:yellow bold"
+format = "[( $all_status$ahead_behind)]($style)[ ](surface1)"
+
+[fill]
+symbol = " "
+
+[cmd_duration]
+min_time = 2000
+style = "fg:peach"
+format = "[ \U000f1442 $duration ]($style)"
+
+[time]
+disabled = false
+time_format = "%H:%M"
+style = "fg:overlay1"
+format = "[ \U000f0954 $time ]($style)"

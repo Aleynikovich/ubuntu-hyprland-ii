@@ -57,6 +57,14 @@ install -m644 "$REPO/templates/foot.ini" ~/.config/foot/foot.ini
 # "[100]" (opaque) for foot, which overrides foot.ini's alpha at every shell start: make it follow term_alpha.
 sed -i -E 's/^term_alpha=[0-9]+/term_alpha=72/' ~/.config/quickshell/ii/scripts/colors/applycolor.sh
 sed -i 's/\[100\]/[$alpha]/g' ~/.config/quickshell/ii/scripts/colors/terminal/sequences.txt
+# Terminal rice: kitty runs fish (kitty.conf `shell fish`); conf.d/rice.fish = zoxide/fzf/bat/eza + fastfetch greeting, kept apart from the dots'
+# config.fish. starship.toml = the two-line prompt with the path/git pills (a previous one is kept as .orig; not a dots dir, so Plasma never reads it).
+mkdir -p ~/.config/fish/conf.d
+install -m644 "$REPO/templates/fish-rice.fish" ~/.config/fish/conf.d/rice.fish
+if [ -f ~/.config/starship.toml ] && ! cmp -s "$REPO/templates/starship.toml" ~/.config/starship.toml && [ ! -e ~/.config/starship.toml.orig ]; then
+  cp ~/.config/starship.toml ~/.config/starship.toml.orig
+fi
+install -m644 "$REPO/templates/starship.toml" ~/.config/starship.toml
 # The shell's config.json: templates/illogical-impulse-config.json holds the keys we set (terminal/update/password actions via
 # kitty, "update" runs maintenance/update.sh instead of pacman; kitty + VS Code pinned instead of cmake-gui). A key is only set while
 # config.json still has the dots' kitty/pacman default (or lacks it), so anything changed later in the shell's settings is kept.
