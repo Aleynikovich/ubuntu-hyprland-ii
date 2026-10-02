@@ -74,10 +74,10 @@ Found the hard way (about ten hard reboots); don't undo these without testing wi
 
 Symptom: after some time in one app, the first new window (e.g. a terminal after a while in VS Code) or workspace switch stutters once, then everything is snappy. Measured cause: the RTX 4070 idles at P8 (210 MHz) and the first frame waits for it to clock up; the CPU was also sitting in `power-saver`/EPP `power` on AC. Phase 95 installs `/usr/local/sbin/gpu-warm`, `gpu-warm.service` (boot, resume from suspend/hibernate) and a udev rule (AC plug/unplug):
 
-- **On AC:** GPU graphics clock floor 1200 MHz (max unchanged; idle draw ~6 W vs ~4 W), power profile `performance`, CPU governor `performance` (Isaac Sim warns about a `powersave` governor even though `intel_pstate` + EPP `performance` is equivalent), and `nvidia-persistenced` is pulled in.
+- **On AC:** GPU graphics clock floor 1200 MHz and memory clock floor 6001 MHz (maxes unchanged; the graphics floor alone was not enough: memory idled at 810 MHz of 8001 and the first blur/workspace frame after idle still stuttered until memory was locked too; idle draw ~10 W vs ~4 W, P4), power profile `performance`, CPU governor `performance` (Isaac Sim warns about a `powersave` governor even though `intel_pstate` + EPP `performance` is equivalent), and `nvidia-persistenced` is pulled in.
 - **On battery:** floor released, `balanced`, governor `powersave`.
 
-`maintenance/power-report.sh` prints a snapshot (AC, profile, governor/EPP, GPU P-state/clocks/draw, battery rate averaged over `SECS`, default 10 s). Run it idle once on AC and once on battery to compare. On AC with phase 95: `performance` profile/governor/EPP, GPU at P5 with gr 1200 MHz, ~6 W idle GPU draw. (`nvidia-smi` shows persistence mode "Disabled": Ubuntu's `nvidia-persistenced` runs with `--no-persistence-mode`, which still keeps the driver initialized; that is what matters here.)
+`maintenance/power-report.sh` prints a snapshot (AC, profile, governor/EPP, GPU P-state/clocks/draw, battery rate averaged over `SECS`, default 10 s). Run it idle once on AC and once on battery to compare. On AC with phase 95: `performance` profile/governor/EPP, GPU at P4 with gr 1200 MHz and mem 6001 MHz, ~10 W idle GPU draw. (`nvidia-smi` shows persistence mode "Disabled": Ubuntu's `nvidia-persistenced` runs with `--no-persistence-mode`, which still keeps the driver initialized; that is what matters here.)
 
 Isaac Sim's "IOMMU is enabled" warning is Ubuntu's default and was left alone (turning it off needs a kernel command line change).
 
