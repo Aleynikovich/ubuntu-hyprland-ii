@@ -26,7 +26,7 @@ Log out and pick **Hyprland (illogical-impulse)** in SDDM. Phases can be re-run:
 |---|---|
 | `~/.local/opt/hyprland` (`PREFIX`) | Hyprland, Quickshell, Qt 6.10, KF6 Kirigami, newer wayland/libinput/xkbcommon/libei/PipeWire-client, tools |
 | `~/src/hypr` (`SRC`) | sources, build trees, logs, lists of apt packages installed (for rollback) |
-| `~/.config/{hypr,quickshell,fuzzel,foot,matugen,wlogout,fish,xdg-desktop-portal}` | dots: **only copied if the folder doesn't exist** |
+| `~/.config/{hypr,quickshell,fuzzel,matugen,wlogout,fish,xdg-desktop-portal}` | dots: **only copied if the folder doesn't exist** |
 | `~/.local/share/{fonts/illogical-impulse,icons,themes}` | fonts, Bibata cursor, adw-gtk3 |
 | `/usr/share/wayland-sessions/hyprland-ii.desktop` | the only file written outside your home (besides apt packages) |
 
@@ -45,6 +45,8 @@ Not touched: Plasma configs (`kdeglobals`, `dolphinrc`, `konsolerc`, `kitty`, `f
 - **`patches/`:** libstdc++ 14 lacks a few C++23/26 library bits (`vector::append_range`, `string + string_view`, `ranges::starts_with`), and clang-20 + libstdc++ 14 trips on `range | std::ranges::to<T>()`. The patches swap these for equivalent C++20 code (17 one-line changes). hyprsunset's patch keeps its systemd unit inside `PREFIX`. aquamarine's patch backports three DRM teardown fixes from upstream main (after 0.15.1, DRM.cpp only, no ABI change) plus the same null-connector guard on the VT switch-away path; aquamarine is built with debug info so DRM/session crashes resolve to a source line.
 - **Built because noble lacks or has too-old versions:** swappy 1.8, wayland 1.26, wayland-protocols 1.49, libinput 1.32, xkbcommon 1.13, libdisplay-info 0.4, libei 1.6, Lua 5.5, xcb-util-errors, readline (no ncurses-dev needed), PipeWire 1.2 client lib (xdph needs ≥ 1.1.82), sdbus-c++ 2, cpptrace with libunwind.
 - **Plasma 5 vs the dots' KDE 6 expectations:** `session-bin/kcmshell6` forwards to `kcmshell5`.
+- **Terminal:** kitty (`~/.config/hypr/custom/variables.lua` sets `terminal = "kitty -1"`; the dots would try foot first). Ubuntu's kitty 0.32 takes `--hold` without a value, so `config.json`'s update/password actions use `--hold`, and "update" runs apt instead of pacman.
+- **Update counter:** `session-bin/checkupdates` stands in for Arch's `checkupdates` (`apt list --upgradable`).
 - **ImageMagick 6:** `session-bin/magick` maps IM7-style calls to IM6 tools.
 - **Lock screen:** Quickshell's lock and the hyprlock fallback both use `/etc/pam.d/login` (hyprlock is configured with `auth:pam:module = login`), so no PAM file is added.
 - **Shell logs:** `session-bin/qs` is a shim that keeps each shell instance's output (Quickshell logs to stdout) in `~/.local/state/hyprland-ii/qs-<config>.log` (previous run as `.1`) with start/exit lines; `ipc`/`kill`/etc. subcommands pass straight through. Quickshell's own `.qslog` files are in `$XDG_RUNTIME_DIR` and are lost at logout.

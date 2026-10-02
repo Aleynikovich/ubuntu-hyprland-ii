@@ -1,4 +1,4 @@
-foot
+kitty
 fuzzel
 wl-clipboard
 cliphist
@@ -20,5 +20,5 @@ eza
 imagemagick
 ripgrep
 geoclue-2-demo
-fonts-jetbrains-mono
 libgirepository-2.0-dev
+pulseaudio-utils

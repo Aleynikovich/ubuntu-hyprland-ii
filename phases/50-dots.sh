@@ -12,7 +12,7 @@ DOTS=$SRC/dots-hyprland
 LOG=$SRC/dots-installed.txt
 
 # Copied: used only by the Hyprland session. xdg-desktop-portal holds hyprland-portals.conf (only read when desktop=Hyprland).
-COPY=(hypr quickshell fuzzel foot matugen wlogout fish xdg-desktop-portal)
+COPY=(hypr quickshell fuzzel matugen wlogout fish xdg-desktop-portal)
 # Deliberately NOT copied (Plasma/other apps read them): kdeglobals dolphinrc konsolerc kitty starship.toml fontconfig
 #   Kvantum darklyrc kde-material-you-colors zshrc.d mpv *-flags.conf. The upstream installer's gsettings/kwriteconfig
 #   theme changes and user-group changes (input, i2c) are skipped too.
@@ -24,6 +24,11 @@ git -C "$DOTS" checkout -q "$DOTS_COMMIT"
 git -C "$DOTS" submodule update -q --init --recursive
 
 touch "$LOG"
+# Terminal: kitty (the dots try foot first). custom/variables.lua is the dots' override file and survives updates.
+if [ ! -s ~/.config/hypr/custom/variables.lua ]; then
+  mkdir -p ~/.config/hypr/custom
+  printf -- '-- Personal overrides (loaded after hyprland/variables.lua; survives dots updates)\nterminal = "kitty -1"\n' > ~/.config/hypr/custom/variables.lua
+fi
 for d in "${COPY[@]}"; do
   if [ -e "$HOME/.config/$d" ]; then echo "skip (exists): ~/.config/$d"; continue; fi
   rsync -a "$DOTS/dots/.config/$d/" "$HOME/.config/$d/"

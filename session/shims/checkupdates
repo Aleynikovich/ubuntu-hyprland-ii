@@ -1,0 +1,4 @@
+#!/bin/sh
+# Arch's checkupdates (pacman-contrib) for the shell's update counter: one line per upgradable apt package
+# (Hyprland session PATH only). Uses apt's cached lists, which apt-daily refreshes; no root needed.
+apt list --upgradable 2>/dev/null | grep -v '^Listing'
