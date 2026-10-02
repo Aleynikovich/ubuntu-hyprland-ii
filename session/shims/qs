@@ -1,0 +1,25 @@
+#!/bin/sh
+# Quickshell's own logs live in $XDG_RUNTIME_DIR and vanish at logout. This keeps a shell instance's output
+# (qs -c ii, qs -p ...) in ~/.local/state/hyprland-ii/qs-<name>.log (previous run kept as .1), with start/exit
+# lines, so a vanished bar leaves a trace. Subcommands (ipc, kill, list, log, msg) run the binary directly.
+Q="${0%/*}/../bin/quickshell"
+name=default; prev=
+for a in "$@"; do
+  case "$a" in ipc|kill|list|log|msg|-h|--help|-V|--version) exec "$Q" "$@";; esac
+  case "$prev" in -c|--config) name=$a;; -p|--path) name=$(basename "${a%/}" .qml);; esac
+  prev=$a
+done
+
+D="${XDG_STATE_HOME:-$HOME/.local/state}/hyprland-ii"; mkdir -p "$D"
+L="$D/qs-$name.log"
+[ -f "$L" ] && mv -f "$L" "$L.1"
+echo "== $(date -Is) start: qs $*" >> "$L"
+NO_COLOR=1 "$Q" --log-times "$@" >> "$L" 2>&1 &   # qs logs to stdout, errors/QML warnings to stderr
+pid=$!
+# killall qs (Ctrl+Super+R) signals this script too: pass it on, then still record how the shell exited.
+trap 'kill -TERM "$pid" 2>/dev/null' TERM INT HUP
+wait "$pid"; rc=$?
+kill -0 "$pid" 2>/dev/null && { wait "$pid"; rc=$?; }
+[ "$rc" -gt 128 ] && how="signal $((rc - 128))" || how="rc=$rc"
+echo "== $(date -Is) exit: $how" >> "$L"
+exit "$rc"

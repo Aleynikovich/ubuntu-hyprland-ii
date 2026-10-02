@@ -41,11 +41,12 @@ fi
 step "Session wrapper + shims -> $P/session-bin"
 S=$P/session-bin; mkdir -p "$S"
 for b in Hyprland hyprland hyprctl hyprpm hyprlock hypridle hyprpicker hyprsunset start-hyprland hyprland-share-picker \
-         hyprshot matugen starship uv uvx qs quickshell; do
+         hyprshot matugen starship uv uvx quickshell; do
   if [ -e "$P/bin/$b" ]; then ln -sfn "$P/bin/$b" "$S/$b"; fi
 done
 install -m755 "$REPO/session/hyprland-ii-session" "$S/hyprland-ii-session"
 sed -i "s|^P=\"\$HOME/.local/opt/hyprland\"|P=\"$P\"|" "$S/hyprland-ii-session"   # honour a custom PREFIX
+rm -f "$S/qs"   # was a plain symlink to $P/bin/qs before the logging shim
 install -m755 "$REPO"/session/shims/* "$S/"
 
 step "Register xdg-desktop-portal-hyprland (UseIn=Hyprland/wlroots only; ignored under KDE)"

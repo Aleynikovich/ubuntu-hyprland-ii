@@ -46,6 +46,7 @@ Not touched: Plasma configs (`kdeglobals`, `dolphinrc`, `konsolerc`, `kitty`, `f
 - **Plasma 5 vs the dots' KDE 6 expectations:** `session-bin/kcmshell6` forwards to `kcmshell5`.
 - **ImageMagick 6:** `session-bin/magick` maps IM7-style calls to IM6 tools.
 - **Lock screen:** Quickshell's lock and the hyprlock fallback both use `/etc/pam.d/login` (hyprlock is configured with `auth:pam:module = login`), so no PAM file is added.
+- **Shell logs:** `session-bin/qs` is a shim that keeps each shell instance's output (Quickshell logs to stdout) in `~/.local/state/hyprland-ii/qs-<config>.log` (previous run as `.1`) with start/exit lines; `ipc`/`kill`/etc. subcommands pass straight through. Quickshell's own `.qslog` files are in `$XDG_RUNTIME_DIR` and are lost at logout.
 - **Icons:** `QS_ICON_THEME=breeze-dark` (the private Qt has no KDE platform theme).
 - **VS Code on Hyprland:** `~/.vscode/argv.json` gets `"password-store": "gnome-libsecret"` (Hyprland isn't auto-detected).
 
