@@ -32,7 +32,7 @@ done
 mkdir -p ~/.local/share/icons
 [ -e ~/.local/share/icons/illogical-impulse.svg ] || cp "$DOTS/dots/.local/share/icons/illogical-impulse.svg" ~/.local/share/icons/
 # templates/hypr-custom/*.lua -> ~/.config/hypr/custom/ (the dots' override files; they survive dots updates). Upstream ships
-# them blank (one newline), so only blank or missing ones are filled. variables.lua: terminal foot, text editor VS Code (the dots try kate first).
+# them blank (one newline), so only blank or missing ones are filled. variables.lua: terminal kitty, text editor VS Code (the dots try kate first).
 # After the copy loop: creating ~/.config/hypr first would make it skip the hypr dots.
 mkdir -p ~/.config/hypr/custom
 for t in "$REPO"/templates/hypr-custom/*; do
@@ -46,28 +46,31 @@ if ! grep -q 'module = login' ~/.config/hypr/hyprlock.conf; then
   printf '\n# Ubuntu: no /etc/pam.d/hyprlock; use the login policy (same one Quickshell lock uses)\nauth {\n    pam {\n        module = login\n    }\n}\n' >> ~/.config/hypr/hyprlock.conf
 fi
 
-step "foot terminal: config + point the shell's terminal actions at it"
-# The dots ship their own foot.ini; ours (templates/foot.ini) keeps their keybindings and adds fonts/padding/Catppuccin Macchiato/88% alpha.
+step "Terminal: kitty (phase 48) + foot fallback config; wallpaper theming keeps terminals translucent"
+# foot stays installed as a fallback: templates/foot.ini keeps the dots' keybindings and adds fonts/padding/Catppuccin Macchiato/72% alpha.
 mkdir -p ~/.config/foot
 if [ -f ~/.config/foot/foot.ini ] && ! cmp -s "$REPO/templates/foot.ini" ~/.config/foot/foot.ini && [ ! -e ~/.config/foot/foot.ini.orig ]; then
   cp ~/.config/foot/foot.ini ~/.config/foot/foot.ini.orig
 fi
 install -m644 "$REPO/templates/foot.ini" ~/.config/foot/foot.ini
-sed -i 's/^term_alpha=100/term_alpha=88/' ~/.config/quickshell/ii/scripts/colors/applycolor.sh   # wallpaper theming keeps the terminal translucent
+# applycolor.sh: term_alpha (kitty ignores it: see kitty.conf background_opacity; foot takes it over OSC 11). The dots' OSC template hard-codes
+# "[100]" (opaque) for foot, which overrides foot.ini's alpha at every shell start: make it follow term_alpha.
+sed -i -E 's/^term_alpha=[0-9]+/term_alpha=72/' ~/.config/quickshell/ii/scripts/colors/applycolor.sh
+sed -i 's/\[100\]/[$alpha]/g' ~/.config/quickshell/ii/scripts/colors/terminal/sequences.txt
 # The shell's config.json: templates/illogical-impulse-config.json holds the keys we set (terminal/update/password actions via
-# foot, "update" runs maintenance/update.sh instead of pacman; foot + VS Code pinned instead of kitty/cmake-gui). A key is only set while
+# kitty, "update" runs maintenance/update.sh instead of pacman; kitty + VS Code pinned instead of cmake-gui). A key is only set while
 # config.json still has the dots' kitty/pacman default (or lacks it), so anything changed later in the shell's settings is kept.
 CJ=~/.config/illogical-impulse/config.json   # exists after the shell's first run; skipped (with a note) otherwise
 if [ ! -f "$CJ" ]; then
-  warn "no $CJ yet: start the shell once, then re-run phase 50 to point its terminal actions at foot"
+  warn "no $CJ yet: start the shell once, then re-run phase 50 to point its terminal actions at kitty"
 elif ! command -v jq >/dev/null; then
   warn "jq not installed: $CJ left as is (apply templates/illogical-impulse-config.json by hand)"
 else
   # @REPO@ in the template = this checkout; an earlier template's plain "apt upgrade" update action is replaced too
-  jq --indent 4 --arg repo "$REPO" --slurpfile ov "$REPO/templates/illogical-impulse-config.json" '
-    ($ov[0] | walk(if type == "string" then gsub("@REPO@"; $repo) else . end)) as $o |
+  jq --indent 4 --arg repo "$REPO" --arg home "$HOME" --slurpfile ov "$REPO/templates/illogical-impulse-config.json" '
+    ($ov[0] | walk(if type == "string" then gsub("@REPO@"; $repo) | gsub("@HOME@"; $home) else . end)) as $o |
     reduce ($o | paths(type != "object") | select(map(type) | index("number") | not)) as $p (.;
-      if (getpath($p) | . == null or (tojson | test("kitty|pacman|apt upgrade"))) then setpath($p; $o | getpath($p)) else . end)
+      if (getpath($p) | . == null or (tojson | test("kitty|foot|pacman|apt upgrade"))) then setpath($p; $o | getpath($p)) else . end)
   ' "$CJ" > "$CJ.tmp" || { rm -f "$CJ.tmp"; die "Cannot parse $CJ (shell mid-write?); re-run phase 50."; }
   # Only replace the file when a value changed (jq reformats empty arrays; a rewrite makes the running shell reload).
   if jq -e --slurpfile new "$CJ.tmp" '. == $new[0]' "$CJ" >/dev/null; then rm "$CJ.tmp"; else mv "$CJ.tmp" "$CJ"; echo "updated: $CJ"; fi

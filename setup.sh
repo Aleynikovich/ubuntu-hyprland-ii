@@ -11,7 +11,7 @@ export REPO
 source "$REPO/lib/common.sh"
 
 # 10-remove-snaps, 45-extras, 70-vscode and 80-hyprland-only are opt-in: pass them explicitly.
-DEFAULT=(00 15 20 30 40 50 60)
+DEFAULT=(00 15 20 30 40 48 50 60)
 
 if [ "${1:-}" = --check-patches ]; then
   shift; source "$REPO/lib/patches.sh"; check_patches "$@"; exit
