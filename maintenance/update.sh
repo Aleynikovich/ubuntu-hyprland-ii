@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+\#!/usr/bin/env bash
 # Careful `apt full-upgrade`: show what the upgrade touches (kernel/boot, NVIDIA, system libs the $PREFIX build links against,
 # PROTECTED_PACKAGES, removals), snapshot versions + /etc, upgrade, then check that the next boot and the session still work.
 # Usage:

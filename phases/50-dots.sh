@@ -65,6 +65,12 @@ if [ -f ~/.config/starship.toml ] && ! cmp -s "$REPO/templates/starship.toml" ~/
   cp ~/.config/starship.toml ~/.config/starship.toml.orig
 fi
 install -m644 "$REPO/templates/starship.toml" ~/.config/starship.toml
+# bat's Catppuccin theme (Ubuntu's bat doesn't ship it; rice.fish sets BAT_THEME): drop it in and rebuild bat's cache.
+if command -v batcat >/dev/null; then
+  mkdir -p ~/.config/bat/themes
+  install -m644 "$REPO/templates/bat-catppuccin-macchiato.tmTheme" "$HOME/.config/bat/themes/Catppuccin Macchiato.tmTheme"
+  batcat cache --build >/dev/null
+fi
 # The shell's config.json: templates/illogical-impulse-config.json holds the keys we set (terminal/update/password actions via
 # kitty, "update" runs maintenance/update.sh instead of pacman; kitty + VS Code pinned instead of cmake-gui). A key is only set while
 # config.json still has the dots' kitty/pacman default (or lacks it), so anything changed later in the shell's settings is kept.
