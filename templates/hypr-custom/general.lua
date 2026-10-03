@@ -29,3 +29,19 @@ hl.monitor({
     position = "0x0",
     scale = 1.25,
 })
+
+-- Any other monitor (office, projector; HDMI or USB-C): its own preferred mode, automatic scale, above the laptop like the desk at home.
+-- Replaces the dots' fallback in hyprland/general.lua, which forced the laptop panel's 3200x2000@165 and scale 1.25 onto every monitor.
+hl.monitor({
+    output = "",
+    mode = "preferred",
+    position = "auto-up",
+    scale = "auto",
+})
+
+-- Linked workspaces (session-bin/hypr-sync-workspaces): the laptop panel always owns workspaces 1-10, so they are right from the first
+-- frame however the monitors come up (booting with the Odyssey plugged in once gave it workspace 1). The helper places 11-20, 21-30, ...
+-- on the other monitors itself (sorted by description), so there are no per-monitor rules to keep in sync here.
+for i = 1, 10 do
+    hl.workspace_rule({ workspace = tostring(i), monitor = "eDP-1", default = (i == 1) })
+end

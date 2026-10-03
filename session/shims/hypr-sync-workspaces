@@ -1,31 +1,43 @@
 #!/usr/bin/env bash
 # Linked workspaces across monitors: switching to workspace N on one monitor switches every monitor to "its" workspace N.
-# Layout: the dots' workspace groups. Monitor k (eDP first, then the others by name) uses workspaces 10k+1..10k+10, so with a second
-# monitor, workspace 3 is shown on the laptop and workspace 13 on the external; SUPER+3 (relative to the focused monitor's group) moves both.
-# Idempotent and event driven (Hyprland socket2); with one monitor it does nothing. Not a shim, installed next to them by phase 50.
+# Layout: the dots' workspace groups. Monitor k uses workspaces 10k+1..10k+10: the laptop panel (eDP) is always group 0, the others
+# follow sorted by description (make/model/serial), so a monitor keeps its group whichever HDMI/USB-C port or dock it is on. With a second
+# monitor, workspace 3 is shown on the laptop and 13 on the external; SUPER+3 (relative to the focused monitor's group) moves both.
+# On every switch, plug, unplug or start, every workspace is moved to its group's monitor (with its windows), then every monitor shows
+# workspace n of its group. Idempotent and event driven (Hyprland socket2); with one monitor it does nothing.
+# Not a shim, installed next to them by phase 50.
 set -u
 SOCK="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
 GROUP=10
 
-sync() {
-  local mons focus fname fws n k name cur
-  mons=$(hyprctl monitors -j | jq -r 'sort_by((.name|startswith("eDP")|not), .name) | .[] | "\(.name) \(.focused) \(.activeWorkspace.id)"')
-  [ "$(wc -l <<<"$mons")" -gt 1 ] || return 0
-  # the focused monitor decides: n = its position inside its group
-  read -r fname _ fws < <(awk '$2=="true"' <<<"$mons")
-  [ -n "${fws:-}" ] && [ "$fws" -gt 0 ] || return 0      # special workspaces have negative ids
-  n=$(( (fws - 1) % GROUP + 1 ))
-  k=0
-  while read -r name _ cur; do
-    if [ "$name" != "$fname" ] && [ "$cur" -ne $((k * GROUP + n)) ]; then
-      hyprctl --batch "dispatch hl.dsp.focus({ monitor = \"$name\" }) ; dispatch hl.dsp.focus({ workspace = $((k * GROUP + n)) }) ; dispatch hl.dsp.focus({ monitor = \"$fname\" })" >/dev/null
-    fi
-    k=$((k + 1))
-  done <<<"$mons"
+# Prints the hyprctl --batch commands that bring the monitors in line (nothing when they already are, or with < 2 monitors).
+plan() {
+  jq -nr --argjson m "$(hyprctl monitors -j)" --argjson w "$(hyprctl workspaces -j)" --argjson g "$GROUP" '
+    ($m | sort_by((.name | startswith("eDP") | not), .description, .name)) as $mons
+    | ($mons | map(.name)) as $names
+    | [$mons[] | select(.focused)][0] as $f
+    | select(($mons | length) > 1 and $f != null and $f.activeWorkspace.id > 0)   # special workspaces have negative ids
+    | (($f.activeWorkspace.id - 1) % $g + 1) as $n                                 # the focused monitor decides n
+    | [ ($w[] | select(.id > 0) | ((.id - 1) / $g | floor) as $k
+           | select($k < ($names | length) and .monitor != $names[$k])
+           | "dispatch hl.dsp.workspace.move({ workspace = \(.id), monitor = \"\($names[$k])\" })"),
+        ($mons | to_entries[] | (.key * $g + $n) as $t | select(.value.activeWorkspace.id != $t)
+           | "dispatch hl.dsp.focus({ monitor = \"\(.value.name)\" }) ; dispatch hl.dsp.focus({ workspace = \($t) })") ]
+    | select(length > 0)
+    | . + ["dispatch hl.dsp.focus({ monitor = \"\($f.name)\" })"] | join(" ; ")'
 }
+sync() { local c; c=$(plan 2>/dev/null) && [ -n "$c" ] && hyprctl --batch "$c" >/dev/null; return 0; }
+
+# One instance per Hyprland session (a second one would fight the first); the lock goes with the process.
+exec 9>"$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/sync-workspaces.lock"
+flock -n 9 || exit 0
 
 sync
-# workspacev2: switch on a monitor; monitoraddedv2: a monitor appeared. Our own focus changes re-trigger this but find nothing to do.
-socat -u "UNIX-CONNECT:$SOCK" - | while IFS= read -r line; do
-  case "$line" in workspacev2\>\>*|monitoraddedv2\>\>*) sync ;; esac
+# workspacev2: switch on a monitor; monitoradded/removedv2: a monitor came or went (unplug, lid, resume). Our own focus changes
+# re-trigger this but find nothing to do. If the event stream drops, reconnect; when Hyprland exits its socket is gone and so are we.
+while [ -S "$SOCK" ]; do
+  socat -u "UNIX-CONNECT:$SOCK" - 9>&- | while IFS= read -r line; do
+    case "$line" in workspacev2\>\>*|monitoraddedv2\>\>*|monitorremovedv2\>\>*) sync ;; esac
+  done
+  sleep 1
 done
