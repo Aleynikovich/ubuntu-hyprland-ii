@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Linked workspaces across monitors: switching to workspace N on one monitor switches every monitor to "its" workspace N.
+# Layout: the dots' workspace groups. Monitor k (eDP first, then the others by name) uses workspaces 10k+1..10k+10, so with a second
+# monitor, workspace 3 is shown on the laptop and workspace 13 on the external; SUPER+3 (relative to the focused monitor's group) moves both.
+# Idempotent and event driven (Hyprland socket2); with one monitor it does nothing. Not a shim, installed next to them by phase 50.
+set -u
+SOCK="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
+GROUP=10
+
+sync() {
+  local mons focus fname fws n k name cur
+  mons=$(hyprctl monitors -j | jq -r 'sort_by((.name|startswith("eDP")|not), .name) | .[] | "\(.name) \(.focused) \(.activeWorkspace.id)"')
+  [ "$(wc -l <<<"$mons")" -gt 1 ] || return 0
+  # the focused monitor decides: n = its position inside its group
+  read -r fname _ fws < <(awk '$2=="true"' <<<"$mons")
+  [ -n "${fws:-}" ] && [ "$fws" -gt 0 ] || return 0      # special workspaces have negative ids
+  n=$(( (fws - 1) % GROUP + 1 ))
+  k=0
+  while read -r name _ cur; do
+    if [ "$name" != "$fname" ] && [ "$cur" -ne $((k * GROUP + n)) ]; then
+      hyprctl --batch "dispatch hl.dsp.focus({ monitor = \"$name\" }) ; dispatch hl.dsp.focus({ workspace = $((k * GROUP + n)) }) ; dispatch hl.dsp.focus({ monitor = \"$fname\" })" >/dev/null
+    fi
+    k=$((k + 1))
+  done <<<"$mons"
+}
+
+sync
+# workspacev2: switch on a monitor; monitoraddedv2: a monitor appeared. Our own focus changes re-trigger this but find nothing to do.
+socat -u "UNIX-CONNECT:$SOCK" - | while IFS= read -r line; do
+  case "$line" in workspacev2\>\>*|monitoraddedv2\>\>*) sync ;; esac
+done

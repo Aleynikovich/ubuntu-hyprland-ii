@@ -99,6 +99,14 @@ Not a phase: the VM already exists and `templates/libvirt-win11.xml` is a copy o
 
 Before this the VM had 12 GiB, 4 plain vCPUs, a 64 MiB QXL, and only `relaxed/vapic/spinlocks/vpindex/synic/stimer/frequencies`.
 
+## Home monitor (Samsung Odyssey G93SC)
+
+`templates/hypr-custom/general.lua` (copied to `~/.config/hypr/custom/general.lua`) places the 49" OLED, 5120x1440@240 over HDMI, directly above the laptop panel and centred on it (`-1280x-1440`; the laptop panel is pinned to `0x0` at scale 1.25, so it is 2560x1600 logical). It is matched by description rather than port, runs at scale 1, and VRR is left off (OLED flicker). Unplugged, the rule is simply unused. Changing the laptop scale means changing the x offset: `-(5120 - laptop_width / scale) / 2`. Note that the monitor otherwise came up at 3840x2160@60 with `auto` placement.
+
+## Linked workspaces across monitors
+
+Hyprland gives every workspace to one monitor. `session/shims/hypr-sync-workspaces` (started from `custom/execs.lua`) makes the monitors switch together instead: it listens on Hyprland's event socket, and when the focused monitor changes to workspace N, every other monitor is switched to its own N. It uses the dots' workspace groups: the laptop panel has workspaces 1-10, the next monitor 11-20, and so on (eDP first, then by name). With the Odyssey connected, SUPER+3 shows workspace 3 on the laptop and 13 on the Odyssey, and SUPER+Alt+3 sends a window to the group of the monitor it is on. Windows don't span monitors; each monitor keeps its own set. With one monitor it does nothing. If the external monitor is unplugged, its windows stay on workspaces 11-20 (shown on the laptop, bar group 2) until you move them. To stop it, remove the `hypr-sync-workspaces` line from `~/.config/hypr/custom/execs.lua`.
+
 ## Known issues
 
 - **ydotool** is a shim over `wtype` (`session-bin/ydotool`): real ydotool needs `/dev/uinput`, i.e. permission for any of your programs to type into every session; wtype uses Hyprland's virtual-keyboard protocol and only reaches Hyprland windows. It covers `key` and `type`, which is all the dots use (clipboard auto-paste, the on-screen keyboard; US key table). Mouse commands aren't implemented; nothing in the dots (or upstream at the pinned commit) uses them.
