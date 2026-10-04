@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Suspend + hibernate that wake up: NVIDIA kernel suspend notifiers, swap file sized and wired for resume, DPMS back on after sleep
-# Rollback: sudo rm /etc/modprobe.d/nvidia-sleep-fix.conf; sudo systemctl unmask nvidia-{suspend,resume,hibernate,suspend-then-hibernate}.service; sudo update-initramfs -u. (The swap file just stays bigger.)
+# Rollback: sudo rm /etc/modprobe.d/nvidia-sleep-fix.conf /usr/lib/systemd/system-sleep/50-nvidia-compact; sudo systemctl unmask nvidia-{suspend,resume,hibernate,suspend-then-hibernate}.service; sudo update-initramfs -u. (The swap file just stays bigger.)
 # Run phase 91 afterwards: it puts resume=/resume_offset= (derived from the swap file) on the Limine cmdline.
 set -euo pipefail
 source "$(dirname "$0")/../lib/common.sh"
@@ -17,6 +17,18 @@ sudo tee /etc/modprobe.d/nvidia-sleep-fix.conf >/dev/null <<'EOF2'
 options nvidia NVreg_UseKernelSuspendNotifiers=1 NVreg_DynamicPowerManagement=0x00
 EOF2
 sudo systemctl mask nvidia-suspend.service nvidia-resume.service nvidia-hibernate.service nvidia-suspend-then-hibernate.service
+
+step "Pre-sleep memory compaction"
+# NVIDIA's suspend notifier allocates big contiguous system-memory chunks to save VRAM; on a fragmented, cache-full box it fails
+# (NV_ERR_NO_MEMORY) and the suspend then stalls for hours. Flush caches + compact right before every sleep.
+sudo tee /usr/lib/systemd/system-sleep/50-nvidia-compact >/dev/null <<'EOF2'
+#!/bin/sh
+[ "$1" = pre ] || exit 0
+sync
+echo 3 > /proc/sys/vm/drop_caches
+echo 1 > /proc/sys/vm/compact_memory
+EOF2
+sudo chmod 755 /usr/lib/systemd/system-sleep/50-nvidia-compact
 
 step "Swap file: ${SWAP_GB}G at $SWAP_FILE"
 cur=$(( $(stat -c %s "$SWAP_FILE") / 1024 / 1024 / 1024 ))

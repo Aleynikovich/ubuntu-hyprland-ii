@@ -63,6 +63,9 @@ OFFSET=$(sudo filefrag -v /swap.img | awk '$1=="0:" && !s {sub(/\.\.$/,"",$4); p
 CMD="root=/dev/mapper/ubuntu--vg-ubuntu--lv ro quiet splash mem_sleep_default=s2idle resume=UUID=$UUID resume_offset=$OFFSET"
 # Pinned panel EDID (phase 93): main entry only, so the previous-kernel entry stays a clean fallback.
 EDID_ARG=""; [ -f /usr/lib/firmware/edid/eDP-1.bin ] && EDID_ARG=" drm.edid_firmware=eDP-1:edid/eDP-1.bin"
+# Hibernate resume wedged on the NVIDIA fbcon (setfont on vtcon1 stuck in D state, screen left on the plymouth prompt): no fbdev
+# console on nvidia-drm; hung-task + no_console_suspend leave a stack trace if it still hangs.
+EDID_ARG="$EDID_ARG nvidia-drm.fbdev=0 no_console_suspend"
 for f in "$ESP/limine.conf" "$ESP/EFI/limine/limine.conf"; do
   [ -f "$f.bak" ] || sudo cp -p "$f" "$f.bak"
   sudo tee "$f" >/dev/null <<EOF
