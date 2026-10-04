@@ -29,13 +29,14 @@ git clone <this repo> ~/src/ubuntu-hyprland-ii && cd ~/src/ubuntu-hyprland-ii
 ./setup.sh 90 91   # sleep + hibernate (91 needs Limine; see "GRUB machines" below), then reboot
 ./setup.sh 93      # optional: pin the panel EDID
 ./setup.sh 95      # optional: GPU/CPU clocks up on AC
+./setup.sh 98      # optional: lid close blanks the panel on AC / Keep awake, else hibernates
 ```
 
 The Windows VM isn't a phase: `virsh define templates/libvirt-win11.xml` recreates it (see [Windows 11 VM](#windows-11-vm-for-tia-portal--robotstudio-libvirt-templateslibvirt-win11xml)).
 
 - Run as the normal user; the scripts call `sudo` themselves. Each phase can be re-run safely.
 - **Rollback:** every phase script has a rollback line in its header. If etckeeper is installed, `/etc` changes are committed with a "Phase NN" message.
-- **Hardware check:** phases 90-95 and 97 compare DMI (`vendor|product|version`) against `HW_TESTED` in `config.env` (`LENOVO|83FD|Legion 7 16IRX9`) and refuse to run on anything else. On another Legion model, review the phase, then run it with `HII_FORCE_HW=1`. For phase 97, first check that the machine has the same chip: `lspci -nn | grep -i network` should show `RTL8852CE ... [10ec:c852]`.
+- **Hardware check:** phases 90-95, 97 and 98 compare DMI (`vendor|product|version`) against `HW_TESTED` in `config.env` (`LENOVO|83FD|Legion 7 16IRX9`) and refuse to run on anything else. On another Legion model, review the phase, then run it with `HII_FORCE_HW=1`. For phase 97, first check that the machine has the same chip: `lspci -nn | grep -i network` should show `RTL8852CE ... [10ec:c852]`.
 - **Fleet agent:** every run fingerprints the Fleet/osquery agent (`orbit`, `fleet-osquery`, `sunrise-firstboot`; listed in `config.env`) before it starts and checks it afterwards. The run fails with exit code 3 if anything about the agent changed. None of these phases touch it.
 - **GRUB machines:** phase 91 writes the kernel command line into Limine (this laptop boots Limine; phase 92 removed GRUB). On a stock GRUB install, run only phase 90. Then add `mem_sleep_default=s2idle resume=UUID=<UUID of the / filesystem> resume_offset=<first physical block of /swap.img>` to `GRUB_CMDLINE_LINUX_DEFAULT` in `/etc/default/grub` and run `sudo update-grub`. Phase 91 shows how both values are derived (`findmnt -no UUID /`, `filefrag -v /swap.img`). The GRUB path has not been tested.
 
@@ -114,6 +115,12 @@ Symptom: after some time in one app, the first new window (e.g. a terminal after
 `maintenance/power-report.sh` prints a snapshot (AC, profile, governor/EPP, GPU P-state/clocks/draw, battery rate averaged over `SECS`, default 10 s). Run it idle once on AC and once on battery to compare. On AC with phase 95: `performance` profile/governor/EPP, GPU at P4 with gr 1200 MHz and mem 6001 MHz, ~10 W idle GPU draw. (`nvidia-smi` shows persistence mode "Disabled": Ubuntu's `nvidia-persistenced` runs with `--no-persistence-mode`, which still keeps the driver initialized; that is what matters here.)
 
 Isaac Sim's "IOMMU is enabled" warning is Ubuntu's default and was left alone (turning it off needs a kernel command line change).
+
+### Lid close (phase 98)
+
+Symptom: after suspend the screen is dark but the fans keep spinning and the keyboard stays lit. Measured on battery: about 6.3 W while "asleep" (0.54 Wh in 307 s), although the CPU package sat in S0ix for 95% of that time. The BIOS has no sleep-mode option, and S3 leaves the panel dark (see Sleep above), so s2idle stays; the laptop's embedded controller just never powers the fans and backlight down.
+
+**Fix:** logind ignores the lid (`/etc/systemd/logind.conf.d/10-lid.conf`), and `/etc/polkit-1/rules.d/10-hibernate.rules` overrides Ubuntu's polkit rule that denies hibernate to users. Hyprland's lid-switch binds run `~/.config/hypr/custom/scripts/lid-action.sh`: on AC, or with the shell's "Keep awake" toggle on (`idle.inhibit` in `~/.local/state/quickshell/states.json`), closing the lid only turns the panel (`eDP-1`) off; on battery with Keep awake off it runs `systemctl hibernate`, at any charge level. If AC is unplugged while the lid is already closed (and Keep awake is off), a udev rule starts `lid-unplug-hibernate.service`, which hibernates. Opening the lid turns the panel back on. After any resume, hypridle's `after_sleep_cmd` runs `resume-display.sh`, which toggles the panel off and on once (1.5 s after resume) and then focuses the lock screen (without it the NVIDIA panel stayed dark until a key press). Idle timeout and Super+Shift+L still use plain suspend.
 
 ### Windows 11 VM for TIA Portal / RobotStudio (libvirt, `templates/libvirt-win11.xml`)
 
