@@ -11,7 +11,7 @@ Tested on: DMI product `83FD`, kernel `7.0.0-38-generic`, NVIDIA driver 595 (ope
 
 | Problem | What was wrong | Fix | Phase | Status | Details |
 |---|---|---|---|---|---|
-| Battery life and heat | RTX 4070 drew the desktop and never slept (~10 W idle) | BIOS Hybrid mode: iGPU draws the desktop, NVIDIA sleeps until an app is offloaded to it | 91, 95, 99 | 🟡 Boots and sleeps; suspend and external monitor still to test | [Hybrid graphics](docs/hybrid-graphics.md) |
+| Battery life and heat | RTX 4070 drew the desktop and never slept (~10 W idle) | BIOS Hybrid mode: iGPU draws the desktop, NVIDIA sleeps until an app is offloaded to it | 91, 95, 99 | 🟢 Boots and sleeps; suspend and external monitor still to test | [Hybrid graphics](docs/hybrid-graphics.md) |
 | Bluetooth headphones stutter and pop | Wi-Fi scanned every 15 s; PipeWire lost realtime priority after suspend; Wi-Fi power save; old firmware | geoclue Wi-Fi off, `pipewire` group, power save off, newer firmware | 97 | 🟢 Much better. Pops remain under heavy Wi-Fi downloads | [Bluetooth audio](docs/bluetooth-audio.md) |
 | Black panel or hang after suspend | S3 "deep" sleep, NVIDIA's systemd sleep services | s2idle, NVIDIA kernel suspend notifiers | 90, 91 | 🟢 Fixed | [Sleep and hibernate](docs/sleep-hibernate.md) |
 | Hibernate didn't work | No resume setup, swap too small | 32 GB `/swap.img`, `resume=` on the kernel command line | 90, 91 | 🟢 Works (wake with the power button) | [Sleep and hibernate](docs/sleep-hibernate.md) |
