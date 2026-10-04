@@ -22,7 +22,10 @@ echo "cpu governor:     $(cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_gover
 echo "cpu EPP:          $(cat /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference 2>/dev/null | uniqc)"
 echo "cpu MHz (now):    $(awk '{s+=$1; if($1>m)m=$1} END{if(NR) printf "avg %d, max %d", s/NR/1000, m/1000}' /sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq)"
 
-if command -v nvidia-smi >/dev/null; then
+nvrs=$(rd /sys/bus/pci/drivers/nvidia/0000:01:00.0/power/runtime_status)
+if [ "$nvrs" = suspended ] || [ "$nvrs" = suspending ]; then
+  echo "gpu:              NVIDIA runtime-suspended (D3): not queried, nvidia-smi would wake it"   # Hybrid graphics: the iGPU draws the desktop
+elif command -v nvidia-smi >/dev/null; then
   nvidia-smi --query-gpu=name,pstate,clocks.gr,clocks.mem,clocks.max.graphics,power.draw,temperature.gpu,utilization.gpu,persistence_mode \
     --format=csv,noheader | while IFS=, read -r n p g m x w t u pm; do
     echo "gpu:              $n |$p | gr$g (max$x) | mem$m | draw$w |$t C | util$u | persistence$pm"

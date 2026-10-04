@@ -1,0 +1,7 @@
+# Lid close (phase 98)
+
+[← Back to the README](../README.md)
+
+Symptom: after suspend the screen is dark but the fans keep spinning and the keyboard stays lit. Measured on battery: about 6.3 W while "asleep" (0.54 Wh in 307 s), although the CPU package sat in S0ix for 95% of that time. The BIOS has no sleep-mode option, and S3 leaves the panel dark (see [Sleep and hibernate](sleep-hibernate.md)), so s2idle stays; the laptop's embedded controller just never powers the fans and backlight down.
+
+**Fix:** logind ignores the lid (`/etc/systemd/logind.conf.d/10-lid.conf`), and `/etc/polkit-1/rules.d/10-hibernate.rules` overrides Ubuntu's polkit rule that denies hibernate to users. Hyprland's lid-switch binds run `~/.config/hypr/custom/scripts/lid-action.sh`: on AC, or with the shell's "Keep awake" toggle on (`idle.inhibit` in `~/.local/state/quickshell/states.json`), closing the lid only turns the panel (`eDP-1`) off; on battery with Keep awake off it runs `systemctl hibernate`, at any charge level. If AC is unplugged while the lid is already closed (and Keep awake is off), a udev rule starts `lid-unplug-hibernate.service`, which hibernates. Opening the lid turns the panel back on. After any resume, hypridle's `after_sleep_cmd` runs `resume-display.sh`, which toggles the panel off and on once (1.5 s after resume) and then focuses the lock screen (without it the NVIDIA panel stayed dark until a key press). Idle timeout and Super+Shift+L still use plain suspend.
