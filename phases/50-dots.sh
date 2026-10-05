@@ -59,6 +59,8 @@ sed -i -E 's/^term_alpha=[0-9]+/term_alpha=72/' ~/.config/quickshell/ii/scripts/
 sed -i 's/\[100\]/[$alpha]/g' ~/.config/quickshell/ii/scripts/colors/terminal/sequences.txt
 # ...and the template's last sequence (OSC 708) lacks its "\" terminator: kitty then swallows whatever prints next (the fish greeting) until it times out.
 [ "$(tail -c1 ~/.config/quickshell/ii/scripts/colors/terminal/sequences.txt | xxd -p)" = 1b ] && printf '\\' >> ~/.config/quickshell/ii/scripts/colors/terminal/sequences.txt
+# Sidebar quick toggles for the Windows VM / GPU session mode (docs/windows-vm.md); harmless without vm-gpu: the buttons just report an error.
+"$REPO/templates/quickshell-ii/install.sh"
 # Terminal rice: kitty runs fish (kitty.conf `shell fish`); conf.d/rice.fish = zoxide/fzf/bat/eza + fastfetch greeting, kept apart from the dots'
 # config.fish. starship.toml = the two-line prompt with the path/git pills (a previous one is kept as .orig; not a dots dir, so Plasma never reads it).
 mkdir -p ~/.config/fish/conf.d

@@ -16,6 +16,10 @@ case "${1:-}" in
       normal) rm -f /etc/vm-gpu/vm-mode ;;
       *) echo "mode vm|normal" >&2; exit 2 ;;
     esac
-    udevadm control --reload ;;
+    udevadm control --reload
+    # Re-evaluate the rule on the 4070's card nodes now, so ID_SEAT (seat-vfio or seat0) is current when the next session starts: Hyprland
+    # decides at startup, and a stale tag made it skip the card (no HDMI image) or grab it (VM refused).
+    udevadm trigger --action=change --subsystem-match=drm --sysname-match='card[0-9]*' --parent-match=/sys/bus/pci/devices/0000:01:00.0 2>/dev/null || true
+    udevadm settle --timeout=5 || true ;;
   *) echo "usage: vm-gpu-nvidia unload|load|mode vm|normal" >&2; exit 2 ;;
 esac
