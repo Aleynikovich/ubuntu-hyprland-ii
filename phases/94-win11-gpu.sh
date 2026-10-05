@@ -6,7 +6,7 @@
 # Windows side (once, in the guest): docs/windows-vm.md.
 # Rollback: virsh define $BACKUP (the old VM definition is saved there); rm ~/.local/bin/vm-gpu ~/.local/bin/looking-glass-client ~/.config/looking-glass
 #   ~/.config/hyprland-ii/gpu-passthrough; sudo rm /etc/tmpfiles.d/10-looking-glass.conf /usr/share/vgabios/rtx4070.rom;
-#   sudo rm /usr/local/sbin/vm-gpu-nvidia /etc/udev/rules.d/99-vm-gpu.rules /etc/vm-gpu/vm-mode /etc/sudoers.d/vm-gpu; sudo udevadm control --reload;
+#   sudo rm /usr/local/sbin/vm-gpu-nvidia /etc/udev/rules.d/99-vm-gpu.rules /etc/udev/rules.d/71-nvidia.rules /etc/vm-gpu/vm-mode /etc/sudoers.d/vm-gpu; sudo udevadm control --reload;
 #   remove the /dev/shm/looking-glass line from /etc/apparmor.d/local/abstractions/libvirt-qemu; log out and in.
 set -euo pipefail
 source "$(dirname "$0")/../lib/common.sh"
@@ -72,6 +72,10 @@ install -D -m755 "$REPO/bin/vm-gpu" "$HOME/.local/bin/vm-gpu"
 step "Root helper (NVIDIA module unload/load) and udev rule (keeps Hyprland off the 4070's DRM node in VM mode)"
 sudo install -o root -g root -m 755 "$REPO/templates/vm-gpu/vm-gpu-nvidia" /usr/local/sbin/vm-gpu-nvidia
 sudo install -o root -g root -m 644 "$REPO/templates/vm-gpu/99-vm-gpu.rules" /etc/udev/rules.d/99-vm-gpu.rules
+# NVIDIA's packaged 71-nvidia.rules runs `modprobe -r nvidia-drm/-modeset/-uvm` when the nvidia driver unregisters. Racing with our
+# unload/load that became a self-sustaining unload/load loop every ~3 s (2026-10-05). Override it with a copy that keeps only the add rules.
+sudo sh -c 'grep -v "ACTION==\"remove\"" /usr/lib/udev/rules.d/71-nvidia.rules > /etc/udev/rules.d/71-nvidia.rules'
+sudo udevadm control --reload
 if ! sudo -n -l /usr/local/sbin/vm-gpu-nvidia unload >/dev/null 2>&1; then
   warn "Optional, for a password-free 'vm-gpu start/stop' (otherwise sudo asks each time): sudo visudo -f /etc/sudoers.d/vm-gpu, one line:"
   echo "$USER ALL=(root) NOPASSWD: /usr/local/sbin/vm-gpu-nvidia unload, /usr/local/sbin/vm-gpu-nvidia load, /usr/local/sbin/vm-gpu-nvidia mode vm, /usr/local/sbin/vm-gpu-nvidia mode normal"

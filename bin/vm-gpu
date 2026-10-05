@@ -15,7 +15,7 @@ GPU=0000:01:00.0
 FLAG="${XDG_CONFIG_HOME:-$HOME/.config}/hyprland-ii/gpu-passthrough"
 ROM=/usr/share/vgabios/rtx4070.rom
 HELPER=/usr/local/sbin/vm-gpu-nvidia   # root helper (templates/vm-gpu/); a NOPASSWD rule in /etc/sudoers.d/vm-gpu is optional (see docs/windows-vm.md)
-hsudo() { hsudo "$@" 2>/dev/null || sudo "$HELPER" "$@"; }
+hsudo() { sudo -n "$HELPER" "$@" 2>/dev/null || sudo "$HELPER" "$@"; }
 v() { virsh -c "$URI" "$@"; }
 die() { echo "vm-gpu: $*" >&2; exit 1; }
 running() { [ "$(v domstate "$VM" 2>/dev/null)" = running ]; }
