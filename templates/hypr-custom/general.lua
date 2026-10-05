@@ -10,9 +10,10 @@ hl.config({
     },
 })
 
--- Rice: lighter blur. The iGPU draws everything at 3200x2000@165 in Hybrid mode; 3 passes at size 6 made the compositor miss every second
--- frame (Vivaldi measured ~85 Hz windowed, 165 only in fullscreen). 1 pass at size 4 holds 165 Hz. Shadows are cheap and stay on.
-hl.config({ decoration = { blur = { passes = 1, size = 4 } } })
+-- Rice: blur at 2 passes (the dots use 3). The iGPU draws everything at 3200x2000@165 in Hybrid mode; 3 passes at size 6 did not fit in one
+-- 6 ms frame even at the iGPU's maximum clock, so animating windows got every second frame (Vivaldi measured ~87 Hz windowed, 165 only in
+-- fullscreen, where the compositor is bypassed). 2 passes at the default size is the heaviest blur that is fast enough. Shadows are cheap.
+hl.config({ decoration = { blur = { passes = 2 } } })
 
 -- Optional: slowly spinning gradient on the focused border (keeps the GPU redrawing, so it costs battery). Uncomment to try.
 -- hl.animation({ leaf = "borderangle", enabled = true, speed = 60, bezier = "linear", style = "loop" })
