@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+"""Session switching for the Windows VM / HDMI monitor modes (docs/windows-vm.md). Installed to ~/.local/bin by phase 94.
+
+  hii-session prepare vm|igpu|monitor   save the open windows, set the next session's mode and the actions to run after login
+                                   (vm: VM mode and start Windows after login; igpu: VM mode only; monitor: HDMI monitor mode)
+  hii-session after-login          run from Hyprland's start hook: relaunch the saved windows, then start the VM if asked to
+  hii-session apps-save [--dry-run]     write ~/.local/state/hii/apps.json from the open windows
+  hii-session apps-restore [--dry-run]  relaunch what apps-save recorded (skips apps that are already open)
+
+The caller (the sidebar button) logs out after `prepare`. Hyprland's PATH has no ~/.local/bin, so apps are relaunched by absolute path.
+"""
+import json, os, shlex, subprocess, sys, time
+
+HOME = os.path.expanduser("~")
+STATE = os.path.join(HOME, ".local/state/hii")
+APPS = os.path.join(STATE, "apps.json")
+AFTER = os.path.join(STATE, "after-login")
+BIN = os.path.join(HOME, ".local/bin")
+# windows that are not restored: the VM's own client (the VM start reopens it), terminals running this very tool are fine
+IGNORE_CLASS = {"looking-glass-client", "quickshell", "org.quickshell"}
+
+
+def hypr(*args):
+    return subprocess.run(["hyprctl", *args], capture_output=True, text=True, timeout=10)
+
+
+def clients():
+    r = hypr("clients", "-j")
+    return json.loads(r.stdout) if r.returncode == 0 and r.stdout.strip() else []
+
+
+def proc_cmd(pid):
+    try:
+        argv = open(f"/proc/{pid}/cmdline", "rb").read().split(b"\0")
+        argv = [a.decode(errors="replace") for a in argv if a]
+        exe = os.readlink(f"/proc/{pid}/exe")
+        cwd = os.readlink(f"/proc/{pid}/cwd")
+    except OSError:
+        return None
+    if not argv:
+        return None
+    if not os.path.isabs(argv[0]):
+        argv[0] = exe if os.path.basename(exe) == os.path.basename(argv[0]) else (argv[0] if "/" in argv[0] else exe)
+    return {"argv": argv, "cwd": cwd}
+
+
+def apps_save(dry=False):
+    seen, apps = {}, []
+    for c in clients():
+        if not c.get("mapped", True) or c.get("class", "") in IGNORE_CLASS or not c.get("class"):
+            continue
+        ws = c["workspace"]["id"]
+        if ws < 0:  # special workspaces (scratchpad) are not restored
+            continue
+        pid = c["pid"]
+        if pid in seen:  # one process, several windows (browsers): launching it once is enough, the app restores its own windows
+            continue
+        cmd = proc_cmd(pid)
+        if not cmd:
+            continue
+        seen[pid] = True
+        apps.append({"class": c["class"], "title": c.get("title", ""), "workspace": ws, "floating": bool(c.get("floating")), **cmd})
+    if dry:
+        for a in apps:
+            print(f"ws {a['workspace']:>2}  {a['class']:<28} {shlex.join(a['argv'])[:90]}")
+        return apps
+    os.makedirs(STATE, exist_ok=True)
+    json.dump(apps, open(APPS, "w"), indent=1)
+    print(f"saved {len(apps)} windows to {APPS}")
+    return apps
+
+
+def lua_str(s):
+    return "[==[" + s + "]==]"
+
+
+def launch(a, dry=False):
+    cmd = f"cd {shlex.quote(a['cwd'])} 2>/dev/null; exec {shlex.join(a['argv'])}"
+    rules = f'{{ workspace = "{a["workspace"]} silent"' + (", float = true" if a.get("floating") else "") + " }"
+    lua = f"hl.dsp.exec_cmd({lua_str('sh -c ' + shlex.quote(cmd))}, {rules})"
+    if dry:
+        print(lua[:200])
+        return True
+    return hypr("dispatch", lua).returncode == 0
+
+
+def apps_restore(dry=False):
+    try:
+        apps = json.load(open(APPS))
+    except (OSError, ValueError):
+        print("nothing to restore")
+        return 0
+    open_classes = {c.get("class") for c in clients()}
+    n = 0
+    for a in apps:
+        if a["class"] in open_classes:  # already there (an autostart, or restored before)
+            continue
+        if launch(a, dry):
+            n += 1
+            if not dry:
+                time.sleep(0.5)
+    print(f"{'would relaunch' if dry else 'relaunched'} {n} of {len(apps)} windows")
+    return n
+
+
+def notify(title, body):
+    subprocess.run(["notify-send", title, body, "-a", "Shell"], capture_output=True)
+
+
+def prepare(mode):
+    if mode not in ("vm", "igpu", "monitor"):
+        sys.exit("prepare vm|igpu|monitor")
+    apps_save()
+    os.makedirs(STATE, exist_ok=True)
+    open(AFTER, "w").write("start-vm\n" if mode == "vm" else "restore\n")
+    r = subprocess.run([os.path.join(BIN, "vm-gpu"), "mode", "normal" if mode == "monitor" else "vm"],
+                       capture_output=True, text=True, env={**os.environ, "PATH": f"{BIN}:{os.environ.get('PATH', '')}"})
+    if r.returncode != 0:
+        os.remove(AFTER)
+        sys.exit(r.stderr.strip() or r.stdout.strip() or "vm-gpu mode failed")
+    print(f"prepared the {mode} session: log out to apply")
+
+
+def after_login():
+    try:
+        action = open(AFTER).read().strip()
+        os.remove(AFTER)
+    except OSError:
+        return  # a normal login
+    # wait for the shell (it draws the notifications and the sidebar) and the compositor to settle
+    for _ in range(60):
+        if subprocess.run(["pgrep", "-u", str(os.getuid()), "-x", "quickshell"], capture_output=True).returncode == 0:
+            break
+        time.sleep(1)
+    time.sleep(4)
+    apps_restore()
+    if action == "start-vm":
+        env = {**os.environ, "PATH": f"{BIN}:{os.environ.get('PATH', '')}"}
+        r = subprocess.run([os.path.join(BIN, "vm-gpu"), "start"], capture_output=True, text=True, env=env)
+        if r.returncode != 0:
+            notify("Windows VM", (r.stderr.strip() or r.stdout.strip() or "vm-gpu start failed")[-300:])
+
+
+if __name__ == "__main__":
+    a = sys.argv[1:]
+    if not a:
+        print(__doc__)
+    elif a[0] == "apps-save":
+        apps_save("--dry-run" in a)
+    elif a[0] == "apps-restore":
+        apps_restore("--dry-run" in a)
+    elif a[0] == "prepare" and len(a) > 1:
+        prepare(a[1])
+    elif a[0] == "after-login":
+        after_login()
+    else:
+        sys.exit(__doc__)

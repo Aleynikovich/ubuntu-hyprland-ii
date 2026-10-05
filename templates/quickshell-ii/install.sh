@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Overlay for the end-4 shell: two sidebar quick toggles for the GPU passthrough setup (docs/windows-vm.md).
-#   vmGpu        "Windows VM"    start/stop the win11 VM on the RTX 4070 (vm-gpu)
-#   gpuSession   "HDMI monitor"  choose at next login: both GPUs (HDMI monitor works) or iGPU only (VM possible); right-click logs out
+#   vmGpu        "Windows VM"    one button: start/stop the win11 VM on the RTX 4070; from the HDMI monitor session it restarts the desktop once
+#   gpuSession   "HDMI monitor"  switch between the HDMI monitor session and the iGPU-only session (the same restart, windows come back)
 # Copies the QML files over ~/.config/quickshell/ii and registers the types (chooser entries + availableToggleTypes). Idempotent;
 # the two patched shell files are saved once as *.orig next to them. They then show up unused in the sidebar's edit mode.
 # Rollback: restore the *.orig files and delete the four new .qml files.
@@ -43,7 +43,7 @@ if '"vmGpu"' not in p:
     p = p.replace('"antiFlashbang"]', '"antiFlashbang", "vmGpu", "gpuSession"]', 1)
     open(panel, "w").write(p); print("types patched")
 PY
-# Put the buttons in the sidebar layout (two cells for the VM, one for the HDMI monitor) when the layout does not have them yet; config backed up once.
+# Put the buttons in the sidebar layout (two cells each) when the layout does not have them yet; config backed up once.
 CFG="$HOME/.config/illogical-impulse/config.json"
 if [ -f "$CFG" ]; then
   python3 - "$CFG" <<'PY'
@@ -56,7 +56,7 @@ if t is not None:
     new = [x for x in ("vmGpu", "gpuSession") if x not in have]
     if new:
         if not os.path.exists(p + ".pre-vmgpu"): shutil.copy2(p, p + ".pre-vmgpu")
-        t.extend({"size": 1 if x == "gpuSession" else 2, "type": x} for x in new)   # gpuSession must stay 1 cell wide (see its model)
+        t.extend({"size": 2, "type": x} for x in new)
         open(p, "w").write(json.dumps(c, indent=4, ensure_ascii=False) + ("\n" if raw.endswith("\n") else ""))
         print("added to the sidebar layout:", ", ".join(new))
 PY

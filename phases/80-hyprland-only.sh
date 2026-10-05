@@ -48,10 +48,11 @@ step "SDDM autologin into Hyprland"
 sudo install -d -m 0755 /etc/sddm.conf.d
 sudo tee /etc/sddm.conf.d/hyprland-ii-autologin.conf >/dev/null <<EOF
 # Boot straight into Hyprland (LUKS passphrase at boot still protects the disk). Remove this file to get the greeter.
+# Relogin=true: also after every logout, so the "Windows VM" / "HDMI monitor" buttons (they restart the desktop to switch sessions) need no password.
 [Autologin]
 User=$(id -un)
 Session=hyprland-ii
-Relogin=false
+Relogin=true
 EOF
 cat /etc/sddm.conf.d/hyprland-ii-autologin.conf
 # Plasma's SDDM settings module leaves an empty [Autologin] section (User=, Session=) in /etc/sddm.conf and
