@@ -4,7 +4,7 @@
 #   vm-gpu stop                                 shut the VM down (forced after 60 s) and confirm the 4070 is back on nvidia
 #   vm-gpu client                               (re)open the Looking Glass client
 #   vm-gpu status                               VM state, who owns the 4070, who holds /dev/nvidia*
-#   vm-gpu mode vm|normal|show                  Hyprland session: iGPU only (4070 free for the VM) or both GPUs (external monitors); takes effect at next login
+#   vm-gpu mode vm|normal|show                  Hyprland session: iGPU only (4070 free for the VM) or monitor mode (4070 draws, HDMI monitor works); takes effect at next login
 #   vm-gpu rom                                  dump the 4070's vBIOS to /usr/share/vgabios/rtx4070.rom (needs sudo; the card must not be in use)
 # While the VM runs the host has no CUDA / Isaac Sim / PRIME offload and no monitor on the laptop's HDMI port. See docs/windows-vm.md.
 set -uo pipefail
@@ -13,6 +13,7 @@ VM=${VM:-win11}
 URI=qemu:///system
 GPU=0000:01:00.0
 FLAG="${XDG_CONFIG_HOME:-$HOME/.config}/hyprland-ii/gpu-passthrough"
+RFLAG="$(dirname "$FLAG")/render-nvidia"   # monitor sessions render on the 4070 (session wrapper); iGPU -> 4070 copies were too slow
 ROM=/usr/share/vgabios/rtx4070.rom
 HELPER=/usr/local/sbin/vm-gpu-nvidia   # root helper (templates/vm-gpu/); a NOPASSWD rule in /etc/sudoers.d/vm-gpu is optional (see docs/windows-vm.md)
 hsudo() { sudo -n "$HELPER" "$@" 2>/dev/null || sudo "$HELPER" "$@"; }
@@ -75,14 +76,14 @@ case $cmd in
   status)
     echo "VM $VM: $(v domstate "$VM" 2>&1)"
     echo "4070 driver: $(driver)  runtime_status: $(cat /sys/bus/pci/devices/$GPU/power/runtime_status 2>/dev/null)"
-    echo "session flag: $([ -e "$FLAG" ] && echo 'VM mode (Hyprland uses the iGPU only)' || echo 'normal (Hyprland also opens the 4070)')"
+    echo "session flag: $([ -e "$FLAG" ] && echo 'VM mode (Hyprland uses the iGPU only)' || echo 'monitor (Hyprland draws on the 4070 and uses the iGPU for the panel)')"
     echo "AQ_DRM_DEVICES of the running Hyprland: $(tr '\0' '\n' < /proc/"$(pgrep -u "$USER" -x Hyprland | head -1)"/environ 2>/dev/null | sed -n 's/^AQ_DRM_DEVICES=//p')"
     h=$(holders); [ -n "$h" ] && { echo "holding /dev/nvidia*:"; echo "$h" | sed 's/^/  /'; } || echo "nothing holds /dev/nvidia*"
     ;;
   mode)
     case ${1:-show} in
-      vm) mkdir -p "$(dirname "$FLAG")" && touch "$FLAG" && hsudo mode vm && echo "VM mode on: log out and in again. External monitors on the HDMI port stop working on the host." ;;
-      normal) rm -f "$FLAG" && hsudo mode normal && echo "normal mode: log out and in again (the 4070 can no longer be handed to the VM)." ;;
+      vm) mkdir -p "$(dirname "$FLAG")" && touch "$FLAG" && rm -f "$RFLAG" && hsudo mode vm && echo "VM mode on: log out and in again. External monitors on the HDMI port stop working on the host." ;;
+      normal) rm -f "$FLAG" && touch "$RFLAG" && hsudo mode normal && echo "monitor mode: log out and in again. The 4070 draws the desktop (an HDMI monitor works), so the VM cannot start." ;;
       show) [ -e "$FLAG" ] && echo vm || echo normal ;;
       *) die "mode vm|normal|show" ;;
     esac ;;
