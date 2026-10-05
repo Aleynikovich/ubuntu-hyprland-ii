@@ -1,0 +1,13 @@
+#!/bin/sh
+# Run a command on the RTX 4070 (PRIME render offload) from the Hybrid session, where Hyprland and everything else is on the iGPU.
+#   nv-run <command> [args...]      e.g. nv-run glxinfo -B | nv-run vulkaninfo --summary | nv-run ~/isaacsim/isaac-sim.sh
+# VM-mode sessions (see vm-gpu) pin EGL to Mesa and Vulkan to the Intel driver so nothing holds /dev/nvidia*, which also hides the 4070
+# from Vulkan/EGL apps; the variables below point just this command at the NVIDIA drivers. OpenGL (GLX) offload needs only the first three.
+# The command keeps the 4070 awake and open, so close it before `vm-gpu start`.
+[ $# -gt 0 ] || { sed -n 2,6p "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+drv=$(basename "$(readlink -f /sys/bus/pci/devices/0000:01:00.0/driver 2>/dev/null)" 2>/dev/null)
+[ "$drv" = nvidia ] || { echo "nv-run: the 4070 is not on the nvidia driver (driver: ${drv:-none}); is the Windows VM running? see: vm-gpu status" >&2; exit 1; }
+export __NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia __VK_LAYER_NV_optimus=NVIDIA_only
+export __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/10_nvidia.json
+export VK_DRIVER_FILES=/usr/share/vulkan/icd.d/nvidia_icd.json
+exec "$@"

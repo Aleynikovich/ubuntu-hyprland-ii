@@ -66,8 +66,9 @@ sudo mkdir -p /etc/apparmor.d/local/abstractions
 grep -qxF '/dev/shm/looking-glass rw,' /etc/apparmor.d/local/abstractions/libvirt-qemu 2>/dev/null \
   || echo '/dev/shm/looking-glass rw,' | sudo tee -a /etc/apparmor.d/local/abstractions/libvirt-qemu >/dev/null
 
-step "vm-gpu"
+step "vm-gpu and nv-run"
 install -D -m755 "$REPO/bin/vm-gpu" "$HOME/.local/bin/vm-gpu"
+install -D -m755 "$REPO/bin/nv-run" "$HOME/.local/bin/nv-run"   # run one command on the 4070 from the iGPU-pinned VM-mode session
 
 step "Root helper (NVIDIA module unload/load) and udev rule (keeps Hyprland off the 4070's DRM node in VM mode)"
 sudo install -o root -g root -m 755 "$REPO/templates/vm-gpu/vm-gpu-nvidia" /usr/local/sbin/vm-gpu-nvidia
