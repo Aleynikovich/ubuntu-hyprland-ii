@@ -29,7 +29,7 @@ Brightness barely moved the number (100% to 40% saved about 1 W). Quickshell and
 | X server no longer forced onto NVIDIA | `/etc/X11/xorg.conf.d/20-nvidia.conf` moved to `.disabled`, `10-hybrid.conf` sets `AutoAddGPU false` (phase 99) | SDDM's X server held the NVIDIA GPU open for the whole session, so it could never sleep |
 | gpu-warm knows the mode | `/usr/local/sbin/gpu-warm` (phase 95) | No `nvidia-smi` calls and no `nvidia-persistenced` while NVIDIA sleeps (either would wake or pin it); iGPU clock floor on AC |
 | Session wrapper picks the display GPU | `session/hyprland-ii-session` | Panel on the iGPU: no NVIDIA environment variables, `AQ_DRM_DEVICES` lists the iGPU first |
-| Extra Limine boot entries "hybrid test A/B/C" | phase 91 | Verbose boots that split a failure into kernel+iGPU (A), session (B) and NVIDIA (C). The default entry was enough, so they are only for debugging |
+| Limine menu trimmed to two entries (2026-10-05) | phase 91 | The "hybrid test A/B/C" bisect entries and the Windows chainload entry were removed once the default entry proved enough: only the newest kernel (default) and the previous one remain |
 
 ## Running an app on the NVIDIA GPU
 

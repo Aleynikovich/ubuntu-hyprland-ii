@@ -66,10 +66,6 @@ EDID_ARG=""; [ -f /usr/lib/firmware/edid/eDP-1.bin ] && EDID_ARG=" drm.edid_firm
 # Hibernate resume wedged on the NVIDIA fbcon (setfont on vtcon1 stuck in D state, screen left on the plymouth prompt): no fbdev
 # console on nvidia-drm; hung-task + no_console_suspend leave a stack trace if it still hangs.
 EDID_ARG="$EDID_ARG nvidia-drm.fbdev=0 no_console_suspend"
-# Hybrid-graphics bisect entries (BIOS Hybrid mode: iGPU drives the panel). Verbose, and NVIDIA kept out step by step, so a failed boot
-# says which layer broke: kernel+i915 (A), NVIDIA modules (B), the Hyprland session (C).
-DBG="${CMD/ quiet splash/} loglevel=7 systemd.show_status=1 printk.devkmsg=on$EDID_ARG"
-NVOFF="modprobe.blacklist=nvidia,nvidia_drm,nvidia_modeset,nvidia_uvm"
 for f in "$ESP/limine.conf" "$ESP/EFI/limine/limine.conf"; do
   [ -f "$f.bak" ] || sudo cp -p "$f" "$f.bak"
   sudo tee "$f" >/dev/null <<EOF
@@ -86,28 +82,6 @@ timeout: 5
     kernel_path: boot():/vmlinuz.old
     module_path: boot():/initrd.img.old
     cmdline: $CMD
-
-/Ubuntu ($NEWEST, hybrid test A: no NVIDIA, text only)
-    protocol: linux
-    kernel_path: boot():/vmlinuz
-    module_path: boot():/initrd.img
-    cmdline: $DBG $NVOFF systemd.unit=multi-user.target
-
-/Ubuntu ($NEWEST, hybrid test B: no NVIDIA, graphical)
-    protocol: linux
-    kernel_path: boot():/vmlinuz
-    module_path: boot():/initrd.img
-    cmdline: $DBG $NVOFF
-
-/Ubuntu ($NEWEST, hybrid test C: with NVIDIA, verbose)
-    protocol: linux
-    kernel_path: boot():/vmlinuz
-    module_path: boot():/initrd.img
-    cmdline: $DBG
-
-/Windows Boot Manager
-    protocol: efi_chainload
-    image_path: boot():/EFI/Microsoft/Boot/bootmgfw.efi
 EOF
 done
 cat "$ESP/limine.conf"
