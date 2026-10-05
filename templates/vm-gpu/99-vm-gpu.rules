@@ -1,0 +1,5 @@
+# VM mode (flag file /etc/vm-gpu/vm-mode, written by `vm-gpu mode vm`): put the 4070's DRM card nodes on a seat nobody logs in to.
+# Why: Hyprland (aquamarine) opens every new GPU on the udev hotplug event, with no seat or AQ_DRM_DEVICES check, so after the NVIDIA
+# modules are reloaded it holds the 4070 and the next unload for the VM fails ("nvidia_drm is in use"). logind refuses to give a session
+# a device that is not on its seat, so the open fails harmlessly. The render node (renderD*) is untouched: CUDA and PRIME offload keep working.
+TEST=="/etc/vm-gpu/vm-mode", SUBSYSTEM=="drm", KERNEL=="card[0-9]*", SUBSYSTEMS=="pci", ATTRS{vendor}=="0x10de", ENV{ID_SEAT}="seat-vfio", TAG-="master-of-seat"

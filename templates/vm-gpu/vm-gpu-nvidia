@@ -1,0 +1,21 @@
+#!/bin/sh
+# Root helper for vm-gpu (installed to /usr/local/sbin; run through sudo, which asks for your password).
+#   unload           unload the NVIDIA modules so libvirt can bind the 4070 to vfio-pci (fails if something still uses the GPU)
+#   load             load them again after the VM stopped, so the 4070 is back on the host
+#   mode vm|normal   create / remove /etc/vm-gpu/vm-mode (the udev rule keeps Hyprland off the 4070's DRM node while it exists)
+set -eu
+case "${1:-}" in
+  unload)
+    systemctl stop nvidia-persistenced 2>/dev/null || true
+    modprobe -r nvidia_uvm nvidia_drm nvidia_modeset nvidia ;;
+  load)
+    modprobe nvidia && modprobe nvidia_modeset && modprobe nvidia_drm && modprobe nvidia_uvm ;;
+  mode)
+    case "${2:-}" in
+      vm) mkdir -p /etc/vm-gpu && : > /etc/vm-gpu/vm-mode ;;
+      normal) rm -f /etc/vm-gpu/vm-mode ;;
+      *) echo "mode vm|normal" >&2; exit 2 ;;
+    esac
+    udevadm control --reload ;;
+  *) echo "usage: vm-gpu-nvidia unload|load|mode vm|normal" >&2; exit 2 ;;
+esac

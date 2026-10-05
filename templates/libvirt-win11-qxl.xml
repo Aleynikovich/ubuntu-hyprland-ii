@@ -45,10 +45,7 @@
   <features>
     <acpi/>
     <apic/>
-    <!-- GPU passthrough: the NVIDIA driver refuses to start (Code 43) if it sees a hypervisor; hide KVM and the Hyper-V vendor id.
-         The Hyper-V enlightenments below stay: they do not trigger it on current drivers. -->
     <hyperv mode="custom">
-      <vendor_id state="on" value="KVMKVMKVM"/>
       <relaxed state="on"/>
       <vapic state="on"/>
       <spinlocks state="on" retries="8191"/>
@@ -61,9 +58,6 @@
       <tlbflush state="on"/>
       <ipi state="on"/>
     </hyperv>
-    <kvm>
-      <hidden state="on"/>
-    </kvm>
     <vmport state="off"/>
     <smm state="on"/>
   </features>
@@ -183,41 +177,19 @@
     <tpm model="tpm-crb">
       <backend type="emulator" version="2.0"/>
     </tpm>
-    <!-- Looking Glass client takes keyboard/mouse/clipboard/audio over SPICE on this fixed local port -->
-    <graphics type="spice" port="5900" autoport="no">
-      <listen type="address" address="127.0.0.1"/>
+    <graphics type="spice" autoport="yes">
+      <listen type="address"/>
       <image compression="off"/>
     </graphics>
     <sound model="ich9">
       <address type="pci" domain="0x0000" bus="0x00" slot="0x1b" function="0x0"/>
     </sound>
     <audio id="1" type="spice"/>
-    <!-- No emulated GPU: the RTX 4070 plus the Virtual Display Driver in Windows are the only display, shown by Looking Glass.
-         (Next to the 4070 the QXL pointer disappears and the mouse stops working.) Fallback without the GPU: libvirt-win11-qxl.xml -->
+    <!-- bigger framebuffer for 4K / multi-monitor CAD-style work -->
     <video>
-      <model type="none"/>
+      <model type="qxl" ram="131072" vram="131072" vgamem="32768" heads="1" primary="yes"/>
+      <address type="pci" domain="0x0000" bus="0x00" slot="0x01" function="0x0"/>
     </video>
-    <!-- RTX 4070 Laptop (10de:2860) and its HDMI audio function; alone in IOMMU group 13. managed=yes: libvirt moves them to
-         vfio-pci on start and back to nvidia/snd_hda_intel on stop. Fails to start while anything holds /dev/nvidia* (use vm-gpu).
-         The ROM is the card's own vBIOS dumped with scripts/vm-gpu rom; remove the line if you do not have it. -->
-    <hostdev mode="subsystem" type="pci" managed="yes">
-      <source>
-        <address domain="0x0000" bus="0x01" slot="0x00" function="0x0"/>
-      </source>
-      <rom file="/usr/share/vgabios/rtx4070.rom"/>
-      <address type="pci" domain="0x0000" bus="0x05" slot="0x00" function="0x0" multifunction="on"/>
-    </hostdev>
-    <hostdev mode="subsystem" type="pci" managed="yes">
-      <source>
-        <address domain="0x0000" bus="0x01" slot="0x00" function="0x1"/>
-      </source>
-      <address type="pci" domain="0x0000" bus="0x05" slot="0x00" function="0x1"/>
-    </hostdev>
-    <!-- Looking Glass frame buffer: 128 MiB covers 3200x2000 and up to 5120x1440 (needs /etc/tmpfiles.d/10-looking-glass.conf) -->
-    <shmem name="looking-glass">
-      <model type="ivshmem-plain"/>
-      <size unit="M">128</size>
-    </shmem>
     <redirdev bus="usb" type="spicevmc">
       <address type="usb" bus="0" port="2"/>
     </redirdev>

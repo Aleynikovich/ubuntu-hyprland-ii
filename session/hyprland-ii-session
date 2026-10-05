@@ -35,6 +35,14 @@ if [ -z "${AQ_DRM_DEVICES:-}" ] && [ "$(echo $cards | wc -w)" -gt 1 ]; then
   for c in $cards; do [ "$c" = "$gpu" ] || AQ_DRM_DEVICES="$AQ_DRM_DEVICES:/dev/dri/$c"; done
   export AQ_DRM_DEVICES
 fi
+# VM mode: with ~/.config/hyprland-ii/gpu-passthrough present, Hyprland opens only the display GPU, so the other GPU (the 4070) has no
+# open handles and can be handed to vfio-pci for the win11 VM. Outputs wired to that GPU (HDMI) do not work on the host in this mode.
+if [ -e "${XDG_CONFIG_HOME:-$HOME/.config}/hyprland-ii/gpu-passthrough" ] && [ -n "$gpu" ]; then
+  AQ_DRM_DEVICES=/dev/dri/$gpu; export AQ_DRM_DEVICES
+  # glvnd/Vulkan would still load the NVIDIA libraries and open /dev/nvidia* (Hyprland, Xwayland, Electron), which blocks unbinding.
+  export __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json
+  export VK_DRIVER_FILES=/usr/share/vulkan/icd.d/intel_icd.json
+fi
 echo "hyprland-ii-session: gpus=[$(echo $cards)] nvidia=[$(echo $nv)] display=${gpu:-none} GBM_BACKEND=${GBM_BACKEND:-} AQ_DRM_DEVICES=${AQ_DRM_DEVICES:-}" >&2
 export ELECTRON_OZONE_PLATFORM_HINT=auto
 export QS_ICON_THEME=breeze-dark

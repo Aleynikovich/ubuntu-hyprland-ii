@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# Run the win11 VM with the RTX 4070 passed through, shown by Looking Glass. Installed to ~/.local/bin by phase 94.
+#   vm-gpu start [--no-client] [--battery-ok]   check, start the VM, block sleep while it runs, open Looking Glass
+#   vm-gpu stop                                 shut the VM down (forced after 60 s) and confirm the 4070 is back on nvidia
+#   vm-gpu client                               (re)open the Looking Glass client
+#   vm-gpu status                               VM state, who owns the 4070, who holds /dev/nvidia*
+#   vm-gpu mode vm|normal|show                  Hyprland session: iGPU only (4070 free for the VM) or both GPUs (external monitors); takes effect at next login
+#   vm-gpu rom                                  dump the 4070's vBIOS to /usr/share/vgabios/rtx4070.rom (needs sudo; the card must not be in use)
+# While the VM runs the host has no CUDA / Isaac Sim / PRIME offload and no monitor on the laptop's HDMI port. See docs/windows-vm.md.
+set -uo pipefail
+
+VM=${VM:-win11}
+URI=qemu:///system
+GPU=0000:01:00.0
+FLAG="${XDG_CONFIG_HOME:-$HOME/.config}/hyprland-ii/gpu-passthrough"
+ROM=/usr/share/vgabios/rtx4070.rom
+HELPER=/usr/local/sbin/vm-gpu-nvidia   # root helper (templates/vm-gpu/); a NOPASSWD rule in /etc/sudoers.d/vm-gpu is optional (see docs/windows-vm.md)
+hsudo() { hsudo "$@" 2>/dev/null || sudo "$HELPER" "$@"; }
+v() { virsh -c "$URI" "$@"; }
+die() { echo "vm-gpu: $*" >&2; exit 1; }
+running() { [ "$(v domstate "$VM" 2>/dev/null)" = running ]; }
+driver() { basename "$(readlink -f /sys/bus/pci/devices/$GPU/driver 2>/dev/null)" 2>/dev/null || echo none; }
+holders() { fuser -v /dev/nvidia* 2>&1 | awk 'NR>1 && NF {print}' | sed 's/^ *//'; }
+on_ac() { for f in /sys/class/power_supply/*/; do [ "$(cat "$f/type" 2>/dev/null)" = Mains ] && [ "$(cat "$f/online" 2>/dev/null)" = 1 ] && return 0; done; return 1; }
+client() {
+  command -v looking-glass-client >/dev/null || die "looking-glass-client not found (phase 94 builds it into ~/.local/bin)"
+  pgrep -x looking-glass-c >/dev/null && { echo "Looking Glass client already running"; return; }
+  nohup looking-glass-client >/dev/null 2>&1 &
+}
+
+cmd=${1:-status}; shift || true
+case $cmd in
+  start)
+    noclient=0; batt=0
+    for a in "$@"; do case $a in --no-client) noclient=1;; --battery-ok) batt=1;; *) die "unknown option $a";; esac; done
+    running && { echo "$VM is already running"; [ $noclient = 1 ] || client; exit 0; }
+    # Hyprland must not hold the 4070 open: it is told to use the iGPU only when the flag file exists at login (phase 94 / vm-gpu mode vm).
+    h=$(holders)
+    if [ -n "$h" ]; then
+      echo "Something holds the NVIDIA GPU open, so it cannot be handed to the VM:" >&2; echo "$h" | sed 's/^/  /' >&2
+      [ -e "$FLAG" ] && die "the flag is set but the process above still has it: close it, or log out and in again." \
+                     || die "run 'vm-gpu mode vm', then log out and back in (Hyprland opens the 4070 for external monitors otherwise)."
+    fi
+    on_ac || [ $batt = 1 ] || die "on battery: the 4070 draws 20-40 W while the VM runs. Plug in, or add --battery-ok."
+    [ -e /dev/shm/looking-glass ] || die "/dev/shm/looking-glass is missing (phase 94 installs /etc/tmpfiles.d/10-looking-glass.conf; sudo systemd-tmpfiles --create)"
+    # Unload the NVIDIA modules instead of unbinding the device: unbinding a re-probed nvidia driver oopses (2026-10-05), a clean module
+    # cycle does not. libvirt then binds the driverless 4070 to vfio-pci. The root helper runs through a NOPASSWD sudoers rule.
+    hsudo unload || die "could not unload the NVIDIA modules (something still uses the GPU? or sudo failed)"
+    if ! v start "$VM"; then
+      hsudo load
+      die "libvirt could not start $VM; the NVIDIA modules are loaded again (see: journalctl -u libvirtd -n 30; sudo tail /var/log/libvirt/qemu/$VM.log)"
+    fi
+    # No sleep or hibernate while the GPU belongs to the VM (a vfio device breaks suspend and hibernate): block-inhibit until qemu exits.
+    pid=$(cat /run/libvirt/qemu/$VM.pid 2>/dev/null || pgrep -f "guest=$VM," | head -1)
+    [ -n "${pid:-}" ] && systemd-inhibit --what=sleep --who=vm-gpu --why="$VM has the GPU (passthrough)" --mode=block \
+      tail --pid="$pid" -f /dev/null >/dev/null 2>&1 &
+    echo "$VM started; the 4070 is now on: $(driver)"
+    [ $noclient = 1 ] || client
+    ;;
+  stop)
+    running || echo "$VM is not running"
+    if running; then
+      v shutdown "$VM" >/dev/null
+      for _ in $(seq 1 60); do running || break; sleep 1; done
+      running && { echo "no clean shutdown after 60 s: forcing off"; v destroy "$VM" >/dev/null; }
+    fi
+    sleep 2
+    [ "$(driver)" = vfio-pci ] && { v nodedev-reattach pci_0000_01_00_0 >/dev/null 2>&1; v nodedev-reattach pci_0000_01_00_1 >/dev/null 2>&1; sleep 1; }
+    hsudo load || die "could not load the NVIDIA modules (sudo $HELPER load)"
+    sleep 3
+    echo "the 4070 is now on: $(driver)  (runtime_status: $(cat /sys/bus/pci/devices/$GPU/power/runtime_status 2>/dev/null))"
+    [ "$(driver)" = nvidia ] || echo "not back on nvidia: check 'vm-gpu status', then reboot if needed" >&2
+    ;;
+  client) client ;;
+  status)
+    echo "VM $VM: $(v domstate "$VM" 2>&1)"
+    echo "4070 driver: $(driver)  runtime_status: $(cat /sys/bus/pci/devices/$GPU/power/runtime_status 2>/dev/null)"
+    echo "session flag: $([ -e "$FLAG" ] && echo 'VM mode (Hyprland uses the iGPU only)' || echo 'normal (Hyprland also opens the 4070)')"
+    echo "AQ_DRM_DEVICES of the running Hyprland: $(tr '\0' '\n' < /proc/"$(pgrep -u "$USER" -x Hyprland | head -1)"/environ 2>/dev/null | sed -n 's/^AQ_DRM_DEVICES=//p')"
+    h=$(holders); [ -n "$h" ] && { echo "holding /dev/nvidia*:"; echo "$h" | sed 's/^/  /'; } || echo "nothing holds /dev/nvidia*"
+    ;;
+  mode)
+    case ${1:-show} in
+      vm) mkdir -p "$(dirname "$FLAG")" && touch "$FLAG" && hsudo mode vm && echo "VM mode on: log out and in again. External monitors on the HDMI port stop working on the host." ;;
+      normal) rm -f "$FLAG" && hsudo mode normal && echo "normal mode: log out and in again (the 4070 can no longer be handed to the VM)." ;;
+      show) [ -e "$FLAG" ] && echo vm || echo normal ;;
+      *) die "mode vm|normal|show" ;;
+    esac ;;
+  rom)
+    running && die "stop the VM first"
+    [ "$(driver)" = vfio-pci ] || { h=$(holders); [ -z "$h" ] || die "something holds the GPU open"; }
+    sudo sh -c "echo on > /sys/bus/pci/devices/$GPU/power/control; echo 1 > /sys/bus/pci/devices/$GPU/rom; mkdir -p /usr/share/vgabios;
+                cat /sys/bus/pci/devices/$GPU/rom > $ROM.new; echo 0 > /sys/bus/pci/devices/$GPU/rom; echo auto > /sys/bus/pci/devices/$GPU/power/control" \
+      || die "could not read the ROM"
+    [ "$(head -c2 $ROM.new | xxd -p)" = 55aa ] || { sudo rm -f $ROM.new; die "dump is not a valid ROM image (no 55AA header)"; }
+    sudo install -m644 $ROM.new $ROM && sudo rm -f $ROM.new && ls -l $ROM ;;
+  *) sed -n 2,9p "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac
