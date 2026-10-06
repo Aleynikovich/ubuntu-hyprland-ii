@@ -111,6 +111,20 @@ step "Register xdg-desktop-portal-hyprland (UseIn=Hyprland/wlroots only; ignored
 mkdir -p ~/.local/share/dbus-1/services ~/.local/share/xdg-desktop-portal/portals
 ln -sfn "$P/share/dbus-1/services/org.freedesktop.impl.portal.desktop.hyprland.service" ~/.local/share/dbus-1/services/
 ln -sfn "$P/share/xdg-desktop-portal/portals/hyprland.portal" ~/.local/share/xdg-desktop-portal/portals/
+# xdg-desktop-portal 1.18 (Ubuntu 24.04) only reads portals from /usr/share unless XDG_DESKTOP_PORTAL_DIR is set,
+# so without this the Hyprland backend is never found and screen sharing only works for browser tabs.
+# The dir replaces /usr/share's, so it holds copies of the system portals + configs plus ours.
+PD=~/.local/share/xdg-desktop-portal-merged
+mkdir -p "$PD" ~/.config/systemd/user/xdg-desktop-portal.service.d
+ln -sfn /usr/share/xdg-desktop-portal/portals/*.portal "$PD/"
+ln -sfn /usr/share/xdg-desktop-portal/*portals.conf "$PD/"
+ln -sfn "$P/share/xdg-desktop-portal/portals/hyprland.portal" "$PD/"
+ln -sfn ~/.config/xdg-desktop-portal/hyprland-portals.conf "$PD/"
+printf '[Service]\nEnvironment=XDG_DESKTOP_PORTAL_DIR=%s\n' "$PD" > ~/.config/systemd/user/xdg-desktop-portal.service.d/portal-dir.conf
+# Chromium/Vivaldi can't import xdph's DMA-BUF frames on this hybrid-GPU box (EGL_BAD_MATCH -> screen share shows 0x0). Shared-memory frames work.
+[ -e ~/.config/hypr/xdph.conf ] || printf 'screencopy {\n    force_shm = true\n    max_fps = 30\n}\n' > ~/.config/hypr/xdph.conf
+# Dolphin'"'"'s FileManager1 daemon opens no window here ("Show in folder" in Vivaldi did nothing); shadow its service with a shim that spawns dolphin.
+printf '[D-BUS Service]\nName=org.freedesktop.FileManager1\nExec=%s/filemanager1-shim\n' "$S" > ~/.local/share/dbus-1/services/org.freedesktop.FileManager1.service
 # Linked, not enabled: has ConditionEnvironment=WAYLAND_DISPLAY, so it never starts under X11 Plasma.
 systemctl --user link "$P/lib/systemd/user/xdg-desktop-portal-hyprland.service" 2>/dev/null || true
 

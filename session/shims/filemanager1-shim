@@ -1,0 +1,23 @@
+#!/usr/bin/python3
+# org.freedesktop.FileManager1 for Hyprland ("Show in folder" in Vivaldi/VS Code/portals).
+# Dolphin's own --daemon implementation forwards to itself and never opens a window here, so just spawn dolphin.
+import subprocess
+from gi.repository import Gio, GLib
+
+XML = """<node><interface name="org.freedesktop.FileManager1">
+<method name="ShowFolders"><arg type="as" direction="in"/><arg type="s" direction="in"/></method>
+<method name="ShowItems"><arg type="as" direction="in"/><arg type="s" direction="in"/></method>
+<method name="ShowItemProperties"><arg type="as" direction="in"/><arg type="s" direction="in"/></method>
+</interface></node>"""
+
+def call(conn, sender, path, iface, method, params, inv):
+    uris = params.unpack()[0]
+    flag = "--select" if method == "ShowItems" else "--new-window"
+    subprocess.Popen(["dolphin", flag, *uris], start_new_session=True)
+    inv.return_value(None)
+
+def on_bus(conn, name):
+    conn.register_object("/org/freedesktop/FileManager1", Gio.DBusNodeInfo.new_for_xml(XML).interfaces[0], call, None, None)
+
+Gio.bus_own_name(Gio.BusType.SESSION, "org.freedesktop.FileManager1", Gio.BusNameOwnerFlags.NONE, on_bus, None, None)
+GLib.MainLoop().run()
