@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Suspend + hibernate that wake up: NVIDIA kernel suspend notifiers, swap file sized and wired for resume, DPMS back on after sleep
-# Rollback: sudo rm /etc/modprobe.d/nvidia-sleep-fix.conf /usr/lib/systemd/system-sleep/50-nvidia-compact; sudo systemctl unmask nvidia-{suspend,resume,hibernate,suspend-then-hibernate}.service; sudo update-initramfs -u. (The swap file just stays bigger.)
+# Rollback: sudo rm /etc/modprobe.d/nvidia-sleep-fix.conf /usr/lib/systemd/system-sleep/50-nvidia-compact /usr/lib/systemd/system-sleep/60-touchpad-resume; sudo systemctl unmask nvidia-{suspend,resume,hibernate,suspend-then-hibernate}.service; sudo update-initramfs -u. (The swap file just stays bigger.)
 # Run phase 91 afterwards: it puts resume=/resume_offset= (derived from the swap file) on the Limine cmdline.
 set -euo pipefail
 source "$(dirname "$0")/../lib/common.sh"
@@ -29,6 +29,25 @@ echo 3 > /proc/sys/vm/drop_caches
 echo 1 > /proc/sys/vm/compact_memory
 EOF2
 sudo chmod 755 /usr/lib/systemd/system-sleep/50-nvidia-compact
+
+step "Touchpad: rebind ELAN I2C controller on wake from sleep/hibernate"
+# On Legion 7 (ELAN06FA:00 04F3:3280), waking from S4/s2idle can leave the controller's
+# slot-1 calibration stuck in MT_TOOL_PALM, causing libinput to drop the second finger
+# (requiring 3 fingers for 2-finger scroll, 4 for 3-finger move, and breaking workspace swipe).
+# Power-cycling the HID device on resume recalibrates the capacitive grid.
+sudo tee /usr/lib/systemd/system-sleep/60-touchpad-resume >/dev/null <<'EOF2'
+#!/bin/sh
+[ "$1" = post ] || exit 0
+for dev in /sys/bus/hid/drivers/hid-multitouch/*04F3:3280*; do
+  if [ -e "$dev" ]; then
+    dev_name=$(basename "$dev")
+    echo "$dev_name" > /sys/bus/hid/drivers/hid-multitouch/unbind 2>/dev/null || true
+    sleep 0.1
+    echo "$dev_name" > /sys/bus/hid/drivers/hid-multitouch/bind 2>/dev/null || true
+  fi
+done
+EOF2
+sudo chmod 755 /usr/lib/systemd/system-sleep/60-touchpad-resume
 
 step "Swap file: ${SWAP_GB}G at $SWAP_FILE"
 cur=$(( $(stat -c %s "$SWAP_FILE") / 1024 / 1024 / 1024 ))
