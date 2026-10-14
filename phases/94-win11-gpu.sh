@@ -70,6 +70,12 @@ step "vm-gpu and nv-run"
 install -D -m755 "$REPO/bin/vm-gpu" "$HOME/.local/bin/vm-gpu"
 install -D -m755 "$REPO/bin/nv-run" "$HOME/.local/bin/nv-run"
 install -D -m755 "$REPO/bin/hii-session" "$HOME/.local/bin/hii-session"   # session switch for the sidebar buttons: saves and restores the windows   # run one command on the 4070 from the iGPU-pinned VM-mode session
+install -D -m755 "$REPO/bin/steam-nv" "$HOME/.local/bin/steam-nv"   # starts Steam with the nv-run environment so every game runs on the 4070
+# User-level Steam launcher override that goes through steam-nv (the system entry stays untouched)
+if [ -f /usr/share/applications/steam.desktop ]; then
+  mkdir -p "$HOME/.local/share/applications"
+  sed "s|^Exec=/usr/games/steam|Exec=$HOME/.local/bin/steam-nv|" /usr/share/applications/steam.desktop > "$HOME/.local/share/applications/steam.desktop"
+fi
 
 step "Root helper (NVIDIA module unload/load) and udev rule (keeps Hyprland off the 4070's DRM node in VM mode)"
 sudo install -o root -g root -m 755 "$REPO/templates/vm-gpu/vm-gpu-nvidia" /usr/local/sbin/vm-gpu-nvidia
