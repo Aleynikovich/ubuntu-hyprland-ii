@@ -43,6 +43,39 @@ if '"vmGpu"' not in p:
     p = p.replace('"antiFlashbang"]', '"antiFlashbang", "vmGpu", "gpuSession"]', 1)
     open(panel, "w").write(p); print("types patched")
 PY
+# Brightness keys with hold acceleration (phase 96): add `adjustBrightness(percent)` + IPC `brightness adjust <percent>` to the shell's
+# Brightness service; the original is saved once as *.orig. The key script is scripts/brightness-accel.sh.
+python3 - "$QS/services/Brightness.qml" <<'PY'
+import sys, os
+p = sys.argv[1]; s = open(p).read()
+if "adjustBrightness" not in s:
+    if not os.path.exists(p + ".orig"): open(p + ".orig", "w").write(s)
+    fn = '''    // Hold-acceleration: signed percent step from the brightness keys (scripts/brightness-accel.sh)
+    function adjustBrightness(percent: int): void {
+        if (percent > 0) {
+            if (Hyprsunset.gamma !== 100) {
+                Hyprsunset.setGamma(Math.min(100, Hyprsunset.gamma + percent));
+                return;
+            }
+            const focusedName = Hyprland.focusedMonitor.name;
+            const monitor = monitors.find(m => focusedName === m.screen.name);
+            if (monitor)
+                monitor.setBrightness(monitor.brightness + percent / 100);
+        } else if (percent < 0) {
+            const focusedName = Hyprland.focusedMonitor.name;
+            const monitor = monitors.find(m => focusedName === m.screen.name);
+            if (monitor && monitor.brightness > 0)
+                monitor.setBrightness(monitor.brightness + percent / 100);
+            else
+                Hyprsunset.setGamma(Hyprsunset.gamma + percent);
+        }
+    }
+
+'''
+    s = s.replace("    // External trigger points\n", fn + "    // External trigger points\n", 1)
+    s = s.replace("        function decrement() {", "        function adjust(percent: int): void {\n            root.adjustBrightness(percent);\n        }\n\n        function decrement() {", 1)
+    open(p, "w").write(s); print("Brightness.qml patched")
+PY
 # Put the buttons in the sidebar layout (two cells each) when the layout does not have them yet; config backed up once.
 CFG="$HOME/.config/illogical-impulse/config.json"
 if [ -f "$CFG" ]; then
