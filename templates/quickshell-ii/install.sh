@@ -4,7 +4,9 @@
 #   gpuSession   "HDMI monitor"  switch between the HDMI monitor session and the iGPU-only session (the same restart, windows come back)
 # Copies the QML files over ~/.config/quickshell/ii and registers the types (chooser entries + availableToggleTypes). Idempotent;
 # the two patched shell files are saved once as *.orig next to them. They then show up unused in the sidebar's edit mode.
-# Rollback: restore the *.orig files and delete the four new .qml files.
+# Also replaces upstream's GameModeToggle.qml (adds: drop the custom blur/translucency rule, performance power profile)
+# and fixes the venv shebang of two dots scripts for dash (see below).
+# Rollback: restore the *.orig files and delete the new .qml files.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 QS="${QS_DIR:-$HOME/.config/quickshell/ii}"
@@ -43,6 +45,16 @@ if '"vmGpu"' not in p:
     p = p.replace('"antiFlashbang"]', '"antiFlashbang", "vmGpu", "gpuSession"]', 1)
     open(panel, "w").write(p); print("types patched")
 PY
+# Ubuntu's /bin/sh is dash, which has no `source`: the dots' venv shebang (`/bin/sh -c "source <venv>/bin/activate && exec
+# python ..."`) dies with "source: not found". That broke HyprlandConfig (game mode never applied its keywords) and the
+# material color generator. Use POSIX `.` instead; the originals are saved once as *.orig.
+for f in "$QS/scripts/hyprland/hyprconfigurator.py" "$QS/scripts/colors/generate_colors_material.py"; do
+  [ -f "$f" ] || continue
+  if head -1 "$f" | grep -q '"source\\_'; then
+    [ -e "$f.orig" ] || cp -p "$f" "$f.orig"
+    sed -i '1s/"source\\_/".\\_/' "$f"; echo "shebang fixed (dash): $f"
+  fi
+done
 # Brightness keys with hold acceleration (phase 96): add `adjustBrightness(percent)` + IPC `brightness adjust <percent>` to the shell's
 # Brightness service; the original is saved once as *.orig. The key script is scripts/brightness-accel.sh.
 python3 - "$QS/services/Brightness.qml" <<'PY'

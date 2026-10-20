@@ -3,7 +3,7 @@
 # Usage: brightness-accel.sh up|down. A gap > GAP_MS since the last event starts a new press (step 1).
 dir="${1:?up|down}"
 state="${XDG_RUNTIME_DIR:-/tmp}/brightness-accel.$dir"
-GAP_MS=400 HOLD_FREE=8 RAMP_EVERY=5 MAX_STEP=10
+GAP_MS=200 HOLD_FREE=3 RAMP_EVERY=2 MAX_STEP=10
 now=$((${EPOCHREALTIME/./} / 1000))
 { read -r last streak <"$state"; } 2>/dev/null || { last=0; streak=0; }
 (( now - last > GAP_MS )) && streak=0
