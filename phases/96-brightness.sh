@@ -18,14 +18,14 @@ sudo udevadm trigger --subsystem-match=backlight --subsystem-match=leds --action
 step "$USER -> group video"
 if id -nG "$USER" | tr ' ' '\n' | grep -qx video; then echo "already in video"; else sudo usermod -aG video "$USER"; warn "log out and back in for the group to apply"; fi
 
-step "Hold-to-accelerate brightness keys (1% per press, growing steps while held)"
+step "Hold-to-accelerate brightness keys (1% per tap, fast 1% bursts on a long press)"
 # Needs the Brightness.qml patch from templates/quickshell-ii/install.sh (IPC `brightness adjust`); the script falls back to brightnessctl.
 install -Dm755 "$(dirname "$0")/../templates/scripts/brightness-accel.sh" ~/.config/hypr/custom/scripts/brightness-accel.sh
 BINDS="$HOME/.config/hypr/custom/keybinds.lua"
 if grep -q brightness-accel.sh "$BINDS" 2>/dev/null; then echo "binds already present"; else
   cat >> "$BINDS" <<'EOF2'
 
--- Brightness keys: 1% per press, growing steps while held (replaces the dots' fixed 1% binds)
+-- Brightness keys: 1% per tap, fast 1% bursts on a long press (replaces the dots' fixed 1% binds)
 hl.unbind("XF86MonBrightnessUp")
 hl.unbind("XF86MonBrightnessDown")
 hl.bind("XF86MonBrightnessUp", hl.dsp.exec_cmd("~/.config/hypr/custom/scripts/brightness-accel.sh up"), { locked = true, repeating = true })
