@@ -122,7 +122,8 @@ ln -sfn "$P/share/xdg-desktop-portal/portals/hyprland.portal" "$PD/"
 ln -sfn ~/.config/xdg-desktop-portal/hyprland-portals.conf "$PD/"
 printf '[Service]\nEnvironment=XDG_DESKTOP_PORTAL_DIR=%s\n' "$PD" > ~/.config/systemd/user/xdg-desktop-portal.service.d/portal-dir.conf
 # Chromium/Vivaldi can't import xdph's DMA-BUF frames on this hybrid-GPU box (EGL_BAD_MATCH -> screen share shows 0x0). Shared-memory frames work.
-[ -e ~/.config/hypr/xdph.conf ] || printf 'screencopy {\n    force_shm = true\n    max_fps = 30\n}\n' > ~/.config/hypr/xdph.conf
+# custom_picker_binary: one fuzzel list instead of the Qt tab dialog; allow_token_by_default: apps that send a restore token aren't re-prompted.
+[ -e ~/.config/hypr/xdph.conf ] || printf 'screencopy {\n    force_shm = true\n    max_fps = 30\n    custom_picker_binary = %s/hypr-share-picker\n    allow_token_by_default = true\n}\n' "$S" > ~/.config/hypr/xdph.conf
 # Dolphin'"'"'s FileManager1 daemon opens no window here ("Show in folder" in Vivaldi did nothing); shadow its service with a shim that spawns dolphin.
 printf '[D-BUS Service]\nName=org.freedesktop.FileManager1\nExec=%s/filemanager1-shim\n' "$S" > ~/.local/share/dbus-1/services/org.freedesktop.FileManager1.service
 # Linked, not enabled: has ConditionEnvironment=WAYLAND_DISPLAY, so it never starts under X11 Plasma.

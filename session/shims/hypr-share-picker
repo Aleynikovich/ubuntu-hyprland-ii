@@ -1,0 +1,35 @@
+#!/usr/bin/python3
+# Screen-share picker for xdph (screencopy:custom_picker_binary): one fuzzel list of screens, windows and region
+# instead of the stock Qt dialog's tabs. Protocol: reads XDPH_WINDOW_SHARING_LIST, prints "[SELECTION]<flags>/<kind>:<arg>".
+import json, os, re, subprocess, sys
+
+allow_token = "--allow-token" in sys.argv[1:]
+
+def run(cmd, **kw):
+    return subprocess.run(cmd, capture_output=True, text=True, **kw).stdout
+
+monitors = json.loads(run(["hyprctl", "monitors", "-j"]) or "[]")
+entries = []  # (label, selection)
+for m in monitors:
+    entries.append((f"󰍹  Screen  {m['name']}  {m['width']}x{m['height']}  {m['description']}", f"screen:{m['name']}"))
+
+for wid, cls, title in re.findall(r"(\d+)\[HC>\](.*?)\[HT>\](.*?)\[HE>\].*?\[HA>\]", os.environ.get("XDPH_WINDOW_SHARING_LIST", "")):
+    entries.append((f"  {cls}  {title}", f"window:{wid}"))
+
+entries.append(("  Region…", "region"))
+
+choice = run(["fuzzel", "--dmenu", "--index", "--prompt", "Share  ", "--width", "60", "--lines", str(min(len(entries), 12))],
+             input="\n".join(label.replace("\n", " ") for label, _ in entries))
+if not choice.strip():
+    sys.exit(1)
+sel = entries[int(choice)][1]
+
+if sel == "region":
+    out = run(["slurp", "-f", "%o %x %y %w %h"]).split()
+    mon = next((m for m in monitors if out and m["name"] == out[0]), None)
+    if not mon:
+        sys.exit(1)
+    x, y, w, h = (int(v) for v in out[1:5])
+    sel = f"region:{mon['name']}@{x - mon['x']},{y - mon['y']},{w},{h}"
+
+print(f"[SELECTION]{'r' if allow_token else ''}/{sel}")

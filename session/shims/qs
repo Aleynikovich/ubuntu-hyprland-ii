@@ -10,6 +10,14 @@ for a in "$@"; do
   prev=$a
 done
 
+# A shell that Quickshell's crash handler restarted keeps __QUICKSHELL_CRASH_* in its environment and passes them to everything it launches;
+# a `qs -p settings.qml` started from it then believes it is that crash restart and relaunches the crashed config (a second full shell/bar
+# and a second set of global shortcuts, so Super+Shift+S stops working) instead of opening settings. A qs started here is never a crash restart.
+unset __QUICKSHELL_CRASH_INFO_FD __QUICKSHELL_CRASH_DUMP_PID __QUICKSHELL_CRASH_SIGNAL
+# A second `qs -p settings.qml` (settings clicked twice) segfaults, and Quickshell's crash handler then restarts it as a full shell
+# (duplicate bars, and its global shortcuts shadow the real shell's, e.g. Super+Shift+S). Only one settings window at a time.
+[ "$name" = settings ] && pgrep -f "bin/quickshell .*-p .*settings\.qml" >/dev/null && exit 0
+
 D="${XDG_STATE_HOME:-$HOME/.local/state}/hyprland-ii"; mkdir -p "$D"
 L="$D/qs-$name.log"
 [ -f "$L" ] && mv -f "$L" "$L.1"
