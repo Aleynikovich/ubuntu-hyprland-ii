@@ -80,12 +80,29 @@ Not touched: Plasma configs (`kdeglobals`, `dolphinrc`, `konsolerc`, `fontconfig
 Hyprland gives every workspace to one monitor. `session/shims/hypr-sync-workspaces` (started from `custom/execs.lua`) makes all monitors switch together instead: when the focused monitor changes to workspace N, every other monitor switches to its own N.
 
 - **Groups:** it uses the dots' workspace groups of 10. The laptop panel always has 1-10. The other monitors follow sorted by description (make, model, serial), so a monitor gets the same group whichever HDMI/USB-C port or dock it is on: with one external it has 11-20, with two the second one has 21-30. With the Odyssey connected, SUPER+3 shows workspace 3 on the laptop and 13 on the Odyssey, and SUPER+Alt+3 sends a window to workspace 3 of the monitor it is on. Windows don't span monitors.
-- **Plugging and unplugging:** on every switch, plug, unplug and at login, every workspace is moved to its group's monitor (with its windows), then each monitor shows workspace N of its group. Unplugged, an external's workspaces and windows move to the laptop (bar group 2; SUPER+1..0 from a workspace in 1-10 doesn't reach them, use the overview or SUPER+scroll). Plugged back in, they return to it. `general.lua` also pins 1-10 to the laptop panel (`hl.workspace_rule`), so a boot with an external already plugged in no longer gives it workspace 1.
-- **Robustness:** with one monitor it does nothing. It runs once per session (lock in `$XDG_RUNTIME_DIR/hypr/<instance>/`), reconnects if Hyprland's event socket drops, and exits with Hyprland.
+- **Plugging and unplugging:** on every switch, plug, unplug and at login, every workspace is moved to its group's monitor (with its windows), then each monitor shows workspace N of its group. Unplugged, an external's windows fold onto the laptop's matching workspace: a window on 12 goes to 2, one on 13 to 3, so SUPER+1..0 reaches everything. A window that opens on a group with no monitor (session restore, a window rule) folds the same way. Plugged back in, the windows stay on the laptop (it can't tell which ones came from the external); drag them back in the overview. `general.lua` also pins 1-10 to the laptop panel (`hl.workspace_rule`), so a boot with an external already plugged in no longer gives it workspace 1.
+- **Robustness:** with only an external monitor (laptop panel off) it does nothing. It runs once per session (lock in `$XDG_RUNTIME_DIR/hypr/<instance>/`), reconnects if Hyprland's event socket drops, and exits with Hyprland.
 - **Tested** 2026-10-03 by disabling and re-enabling the Odyssey at runtime, by pushing workspace 1 onto the Odyssey by hand, and with the Odyssey's rule taken out (so it came up as an unknown monitor).
 - **Limits:** two changes in the same instant (a workspace switch and a focus move to another monitor) link to whichever came last; the monitors still end up as a matching pair. A dock that gives two identical monitors no serial number may swap their groups between plugs.
 
 To stop it, remove the `hypr-sync-workspaces` line from `~/.config/hypr/custom/execs.lua`.
+
+## Desk apps (phase 55)
+
+Slack, WhatsApp, Linear and Notion each get a fixed place and a jump key, so they are always one key away on either monitor. `templates/scripts/desk-app.sh` (installed to `~/.config/hypr/custom/scripts/`) opens them as Vivaldi app windows (`vivaldi --app=URL`, same profile, so already logged in). In tabs they are all `vivaldi-stable` to Hyprland; an app window gets its own class (`vivaldi-<host>__<path>-Default`).
+
+| Key | App | Home |
+|---|---|---|
+| SUPER+ALT+C | Slack | 1 |
+| SUPER+ALT+W | WhatsApp | 1 |
+| SUPER+ALT+L | Linear | 2 |
+| SUPER+ALT+N | Notion | 2 |
+
+- **Jump (SUPER+ALT+key):** focuses the app's window on a visible workspace (laptop or external), else the one on its home desk, else the most recent one. Not running: opens it on its home workspace. Pressed again on it: the next window of that app, or back where you were if there is only one (a peek-and-return toggle).
+- **New here (SUPER+SHIFT+ALT+key):** another window of the app on the focused workspace, e.g. a Slack channel next to VS Code. Nothing pins the app's windows, so it stays there.
+- **Monitors:** "home desk" counts in every monitor's group, so a Slack moved from 1 to 11 (the external's half of desk 1) is still at home; focusing it switches both monitors to desk 1 (linked workspaces). Unplugged, it folds back to 1.
+- **Adding an app:** one line in the script's `case` (URL and home workspace) and one entry (key, app, name) in the `ipairs({...})` table in `custom/keybinds.lua`. The binds show in the cheatsheet (SUPER+/) under "Desk".
+- **Tested** 2026-10-23 with the Odyssey connected: open at home, toggle back, new window here, cycling two windows, and jumping to a window on the external's visible workspace and on its home desk (12).
 
 ## Known issues
 

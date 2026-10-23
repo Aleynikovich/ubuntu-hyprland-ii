@@ -58,7 +58,7 @@ Hyprland 0.56 with [end-4/dots-hyprland](https://github.com/end-4/dots-hyprland)
 ./setup.sh          # 00 15 20 30 40 48 50 60: backup, deps, build (30-60 min), runtime, kitty, dots, login entry
 ```
 
-Optional phases: `10` remove snaps, `45` EasyEffects/ddcutil, `70` VS Code, `80` remove Plasma/GNOME (destructive), `96` brightness keys. Everything about it is in [Hyprland desktop](docs/hyprland-desktop.md): install, isolation, Ubuntu workarounds, monitors, linked workspaces, known issues.
+Optional phases: `10` remove snaps, `45` EasyEffects/ddcutil, `70` VS Code, `80` remove Plasma/GNOME (destructive), `55` desk apps (Slack/Linear/... jump keys), `96` brightness keys. Everything about it is in [Hyprland desktop](docs/hyprland-desktop.md): install, isolation, Ubuntu workarounds, monitors, linked workspaces, desk apps, known issues.
 
 ## Documentation
 

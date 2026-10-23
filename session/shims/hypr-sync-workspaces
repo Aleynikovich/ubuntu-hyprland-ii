@@ -4,21 +4,26 @@
 # follow sorted by description (make/model/serial), so a monitor keeps its group whichever HDMI/USB-C port or dock it is on. With a second
 # monitor, workspace 3 is shown on the laptop and 13 on the external; SUPER+3 (relative to the focused monitor's group) moves both.
 # On every switch, plug, unplug or start, every workspace is moved to its group's monitor (with its windows), then every monitor shows
-# workspace n of its group. Idempotent and event driven (Hyprland socket2); with one monitor it does nothing.
+# workspace n of its group. Windows on a group with no monitor (the external was unplugged: 11-20 with no external) fold onto the laptop
+# panel's workspace n (12 -> 2), so nothing is left on a workspace SUPER+1..0 can't reach. Idempotent and event driven (Hyprland socket2);
+# with only an external monitor (no laptop panel) it does nothing.
 # Not a shim, installed next to them by phase 50.
 set -u
 SOCK="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
 GROUP=10
 
-# Prints the hyprctl --batch commands that bring the monitors in line (nothing when they already are, or with < 2 monitors).
+# Prints the hyprctl --batch commands that bring the monitors in line (nothing when they already are, or with only an external monitor).
 plan() {
-  jq -nr --argjson m "$(hyprctl monitors -j)" --argjson w "$(hyprctl workspaces -j)" --argjson g "$GROUP" '
+  jq -nr --argjson m "$(hyprctl monitors -j)" --argjson w "$(hyprctl workspaces -j)" --argjson c "$(hyprctl clients -j)" --argjson g "$GROUP" '
     ($m | sort_by((.name | startswith("eDP") | not), .description, .name)) as $mons
     | ($mons | map(.name)) as $names
+    | ($names[0] | startswith("eDP")) as $edp
     | [$mons[] | select(.focused)][0] as $f
-    | select(($mons | length) > 1 and $f != null and $f.activeWorkspace.id > 0)   # special workspaces have negative ids
-    | (($f.activeWorkspace.id - 1) % $g + 1) as $n                                 # the focused monitor decides n
-    | [ ($w[] | select(.id > 0) | ((.id - 1) / $g | floor) as $k
+    | select((($mons | length) > 1 or $edp) and $f != null and $f.activeWorkspace.id > 0)   # special workspaces have negative ids
+    | (($f.activeWorkspace.id - 1) % $g + 1) as $n                                           # the focused monitor decides n
+    | [ ($c[] | select($edp and .workspace.id > 0 and ((.workspace.id - 1) / $g | floor) >= ($names | length))
+           | "dispatch hl.dsp.window.move({ workspace = \((.workspace.id - 1) % $g + 1), follow = false, window = \"address:\(.address)\" })"),
+        ($w[] | select(.id > 0) | ((.id - 1) / $g | floor) as $k
            | select($k < ($names | length) and .monitor != $names[$k])
            | "dispatch hl.dsp.workspace.move({ workspace = \(.id), monitor = \"\($names[$k])\" })"),
         ($mons | to_entries[] | (.key * $g + $n) as $t | select(.value.activeWorkspace.id != $t)
@@ -33,11 +38,12 @@ exec 9>"$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/sync-workspaces.lock"
 flock -n 9 || exit 0
 
 sync
-# workspacev2: switch on a monitor; monitoradded/removedv2: a monitor came or went (unplug, lid, resume). Our own focus changes
-# re-trigger this but find nothing to do. If the event stream drops, reconnect; when Hyprland exits its socket is gone and so are we.
+# workspacev2: switch on a monitor; monitoradded/removedv2: a monitor came or went (unplug, lid, resume); openwindow: a window opened on a
+# group with no monitor (session restore, a window rule). Our own focus changes and moves re-trigger this but find nothing to do. If the
+# event stream drops, reconnect; when Hyprland exits its socket is gone and so are we.
 while [ -S "$SOCK" ]; do
   socat -u "UNIX-CONNECT:$SOCK" - 9>&- | while IFS= read -r line; do
-    case "$line" in workspacev2\>\>*|monitoraddedv2\>\>*|monitorremovedv2\>\>*) sync ;; esac
+    case "$line" in workspacev2\>\>*|monitoraddedv2\>\>*|monitorremovedv2\>\>*|openwindow\>\>*) sync ;; esac
   done
   sleep 1
 done
